@@ -1,7 +1,7 @@
 # Auth Service
 
 [![CI](https://github.com/hapiService/auth-service/actions/workflows/ci.yml/badge.svg)](https://github.com/hapiService/auth-service/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+[![codecov](https://codecov.io/gh/hapiService/auth-service/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/hapiService/auth-service)
 
 앙상블리 프로젝트의 사용자 인증 및 회원 관리 서비스입니다.
 
@@ -192,17 +192,3 @@ rpc GetUserDisplayInfo(UserIdRequest) returns (UserDisplayInfoResponse);
 `src/main/resources/templates/` 디렉토리의 HTML 파일을 수정하세요:
 - `email-verification.html` - 이메일 인증
 - `password-reset-email.html` - 비밀번호 재설정
-
-## 🤝 기여
-
-1. Feature 브랜치 생성
-2. 테스트 작성 (커버리지 80% 이상 유지)
-3. Pull Request 생성
-
-## 📄 라이선스
-
-MIT License
-
----
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
