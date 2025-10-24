@@ -1,0 +1,77 @@
+server:
+  port: 9001
+
+# gRPC 서버 설정
+grpc:
+  server:
+    port: 9090
+
+spring:
+  application:
+    name: auth-service
+
+  profiles:
+    active: local  # 기본 프로파일을 local로 설정
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/auth_db}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:change-me}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+
+  # 이메일 설정 (Gmail SMTP)
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${GMAIL_USERNAME:your-email@gmail.com}
+    password: ${GMAIL_APP_PASSWORD:your-app-password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 3000
+          writetimeout: 5000
+
+  # Redis 설정
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # 캐시 설정
+  cache:
+    redis:
+      # AES-256 암호화 키 (환경변수로 설정 권장, 32바이트)
+      # 운영 환경에서는 반드시 환경변수 CACHE_ENCRYPTION_KEY로 설정!
+      encryption-key: ${CACHE_ENCRYPTION_KEY:CHANGE_THIS_32_BYTE_SECRET_KEY}
+
+jwt:
+  secret-key: ${JWT_SECRET:change-this-secret-key-in-production}
+  issuer: ${JWT_ISSUER:your-issuer}
+  access-token-validity-seconds: 1800
+  refresh-token-validity-seconds: 1209600
+
+social:
+  timeout:
+    millis: 5000
+
+app:
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}

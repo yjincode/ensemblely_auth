@@ -1,0 +1,175 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>이메일 인증</title>
+    <style type="text/css">
+        /* Reset for email clients */
+        body, table, td, p, a, li, blockquote { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; }
+
+        /* Base styles */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Layout */
+        .email-wrapper { background-color: #f5f7fa; padding: 20px; }
+        .email-container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; }
+
+        /* Header */
+        .header-section { background-color: #667eea; padding: 40px 30px; text-align: center; }
+        .header-title { color: #ffffff !important; font-size: 28px; font-weight: bold; margin: 0; padding: 0; }
+        .header-subtitle { color: #ffffff !important; font-size: 16px; margin: 8px 0 0 0; opacity: 0.9; }
+
+        /* Content */
+        .content-section { padding: 40px 30px; }
+        .greeting { font-size: 22px; color: #333333 !important; font-weight: bold; text-align: center; margin: 0 0 16px 0; }
+        .message { font-size: 16px; color: #666666 !important; line-height: 1.6; text-align: center; margin: 0 0 30px 0; }
+
+        /* Primary verification */
+        .primary-verification { background-color: #ffffff; border: 2px solid #e8ecf0; border-radius: 12px; padding: 30px; text-align: center; margin: 0 0 30px 0; }
+        .primary-icon { font-size: 48px; line-height: 1; margin: 0 0 20px 0; display: block; }
+        .primary-title { font-size: 20px; font-weight: bold; color: #333333 !important; margin: 0 0 12px 0; }
+        .primary-description { font-size: 15px; color: #666666 !important; margin: 0 0 24px 0; line-height: 1.5; }
+
+        .verification-button {
+            display: inline-block;
+            background-color: #667eea !important;
+            color: #ffffff !important;
+            padding: 16px 40px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        /* Alternative method */
+        .alternative-method { margin: 40px 0 0 0; padding: 20px 0 0 0; border-top: 1px dashed #e0e0e0; }
+        .alternative-title { font-size: 13px; color: #999999 !important; text-align: center; margin: 0 0 15px 0; }
+        .code-container { text-align: center; }
+        .code-label { font-size: 12px; color: #999999 !important; margin: 0 0 8px 0; }
+        .verification-code {
+            display: inline-block;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 12px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 18px !important;
+            font-weight: 600;
+            color: #495057 !important;
+            letter-spacing: 4px;
+        }
+
+        /* Notice */
+        .notice-section { margin: 30px 0 0 0; }
+        .notice { background-color: #fff9e6; border: 1px solid #ffd93d; border-radius: 8px; padding: 16px; margin: 0 0 15px 0; }
+        .notice-text { font-size: 14px; color: #8b6914 !important; margin: 0; line-height: 1.4; }
+        .timer-notice { background-color: #ffe6e6; border-color: #ff6b6b; }
+        .timer-notice .notice-text { color: #c92a2a !important; }
+
+        /* Footer */
+        .footer-section { background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef; }
+        .footer-text { font-size: 13px; color: #666666 !important; margin: 5px 0; line-height: 1.4; }
+        .brand { font-weight: bold; color: #667eea !important; }
+
+        /* Mobile */
+        @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 10px; }
+            .content-section { padding: 30px 20px; }
+            .header-section { padding: 30px 20px; }
+            .verification-code { font-size: 20px !important; letter-spacing: 2px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+                <td align="center">
+                    <!-- Email Container -->
+                    <table cellpadding="0" cellspacing="0" border="0" width="600" class="email-container" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
+                        
+                        <!-- Header Section -->
+                        <tr>
+                            <td class="header-section" style="background-color: #667eea; padding: 40px 30px; text-align: center;">
+                                <h1 class="header-title">🎵 앙상블리</h1>
+                                <div class="header-subtitle">이메일 인증</div>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content Section -->
+                        <tr>
+                            <td class="content-section" style="padding: 40px 30px;">
+                                
+                                <!-- Greeting -->
+                                <div class="greeting">안녕하세요!</div>
+                                
+                                <!-- Message -->
+                                <div class="message">
+                                    앙상블리 회원가입을 위한 이메일 인증입니다.<br/>
+                                    아래 버튼을 클릭하여 간편하게 인증을 완료하세요.
+                                </div>
+
+                                <!-- Verification Container -->
+                                <table cellpadding="0" cellspacing="0" border="0" width="100%" class="primary-verification" style="background-color: #ffffff; border: 2px solid #e8ecf0; border-radius: 12px; padding: 30px; text-align: center; margin: 0 0 30px 0;">
+                                    <tr>
+                                        <td style="padding: 0;">
+                                            <div class="primary-icon">✨</div>
+                                            <div class="primary-title">원클릭 인증</div>
+                                            <div class="primary-description">버튼을 클릭하여 간편하게 인증하세요</div>
+                                            <a th:href="${verificationUrl}" class="verification-button" style="display: inline-block; background-color: #667eea; color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 25px; font-weight: bold; font-size: 16px;">
+                                                인증 완료하기
+                                            </a>
+
+                                            <!-- Alternative: Code Input -->
+                                            <div class="alternative-method" style="margin: 40px 0 0 0; padding: 20px 0 0 0; border-top: 1px dashed #e0e0e0;">
+                                                <div class="alternative-title">원클릭 인증이 작동하지 않나요?<br/>앱으로 돌아가 아래 코드를 직접 입력해주세요</div>
+                                                <div class="code-container">
+                                                    <div class="code-label">인증 코드</div>
+                                                    <div class="verification-code" th:text="${verificationCode}" style="display: inline-block; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 20px; font-family: 'Courier New', monospace; font-size: 18px; font-weight: 600; color: #495057; letter-spacing: 4px;">
+                                                        123456
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <!-- Notice Section -->
+                                <div class="notice-section">
+                                    <div class="notice timer-notice" style="background-color: #ffe6e6; border: 1px solid #ff6b6b; border-radius: 8px; padding: 16px; margin: 0 0 15px 0;">
+                                        <div class="notice-text" style="color: #c92a2a;">
+                                            ⏰ 이 인증은 <strong>5분 후</strong>에 만료됩니다.
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer Section -->
+                        <tr>
+                            <td class="footer-section" style="background-color: #f8f9fa; padding: 30px; text-align: center; border-top: 1px solid #e9ecef;">
+                                <div class="footer-text">
+                                    <span class="brand">앙상블리 팀</span>에서 보내드렸습니다.
+                                </div>
+                                <div class="footer-text">
+                                    이 메일은 발신전용입니다. 문의사항은 고객센터를 이용해주세요.
+                                </div>
+                            </td>
+                        </tr>
+                        
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package spring.authservice.grpc;
+
+option java_multiple_files = true;
+option java_package = "spring.authservice.grpc";
+option java_outer_classname = "UserInfoProto";
+
+// User 정보 조회 서비스
+service UserInfoService {
+  // 단일 사용자 닉네임 조회
+  rpc GetUserNickname(UserIdRequest) returns (UserNicknameResponse);
+
+  // 여러 사용자 닉네임 일괄 조회
+  rpc GetUserNicknames(UserIdsRequest) returns (UserNicknamesResponse);
+
+  // 사용자별 최대 워크스페이스 수 조회
+  rpc GetUserMaxWorkspaces(UserIdRequest) returns (UserMaxWorkspacesResponse);
+
+  // 사용자 닉네임 + 프로필 이미지 조회
+  rpc GetUserDisplayInfo(UserIdRequest) returns (UserDisplayInfoResponse);
+}
+
+// === Request Messages ===
+
+message UserIdRequest {
+  int64 user_id = 1;
+}
+
+message UserIdsRequest {
+  repeated int64 user_ids = 1;
+}
+
+// === Response Messages ===
+
+message UserNicknameResponse {
+  int64 user_id = 1;
+  string nickname = 2;
+  bool exists = 3;  // 사용자 존재 여부
+}
+
+message UserNicknamesResponse {
+  repeated UserNicknameResponse users = 1;
+}
+
+message UserMaxWorkspacesResponse {
+  int64 user_id = 1;
+  int32 max_workspaces = 2;
+  bool exists = 3;
+}
+
+message UserDisplayInfoResponse {
+  int64 user_id = 1;
+  string nickname = 2;
+  string profile_image_url = 3;
+  bool exists = 4;
+}
