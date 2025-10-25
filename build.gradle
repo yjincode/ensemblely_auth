@@ -51,6 +51,8 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'io.grpc:grpc-testing:1.62.2'
+    testImplementation 'net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
