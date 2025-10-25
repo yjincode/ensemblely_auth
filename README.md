@@ -1,7 +1,7 @@
 # Auth Service
 
-[![CI](https://github.com/hapiService/auth-service/actions/workflows/ci.yml/badge.svg)](https://github.com/hapiService/auth-service/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/hapiService/auth-service/branch/main/graph/badge.svg?token=YOUR_CODECOV_TOKEN)](https://codecov.io/gh/hapiService/auth-service)
+[![CI](https://github.com/yjincode/ensemblely_auth/actions/workflows/ci.yml/badge.svg)](https://github.com/yjincode/ensemblely_auth/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/yjincode/ensemblely_auth/branch/main/graph/badge.svg)](https://codecov.io/gh/yjincode/ensemblely_auth)
 
 앙상블리 프로젝트의 사용자 인증 및 회원 관리 서비스입니다.
 
