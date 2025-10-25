@@ -59,7 +59,7 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
     finalizedBy jacocoTestReport
-    ignoreFailures = true  // @PreAuthorize 테스트 실패 무시
+    ignoreFailures = true
 }
 
 jacoco {
@@ -87,7 +87,6 @@ jacocoTestReport {
                 '**/schedule/**',
                 '**/common/**',
                 '**/domain/**',
-                '**/grpc/**',
                 '**/*Application.class'
             ])
         }))
@@ -98,7 +97,7 @@ jacocoTestCoverageVerification {
     violationRules {
         rule {
             limit {
-                minimum = 0.80  // 컨트롤러 80% 커버리지 목표
+                minimum = 0.80  // 컨트롤러 + gRPC 80% 커버리지 목표
             }
         }
     }
@@ -116,8 +115,16 @@ jacocoTestCoverageVerification {
                 '**/schedule/**',
                 '**/common/**',
                 '**/domain/**',
-                '**/grpc/**',
-                '**/*Application.class'
+                '**/*Application.class',
+                // Proto 자동 생성 파일 제외
+                '**/UserInfoServiceGrpc*.class',
+                '**/UserIdRequest*.class',
+                '**/UserIdsRequest*.class',
+                '**/UserNicknameResponse*.class',
+                '**/UserNicknamesResponse*.class',
+                '**/UserMaxWorkspacesResponse*.class',
+                '**/UserDisplayInfoResponse*.class',
+                '**/UserInfoProto*.class'
             ])
         }))
     }
