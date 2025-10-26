@@ -25,6 +25,7 @@ public class RefreshTokenSessionService {
     private final RefreshTokenSessionRepository sessionRepository;
     private final CryptoUtil cryptoUtil;
     private final GeoIpService geoIpService;
+    private final RefreshTokenBlacklistService blacklistService;
 
     /**
      * 세션 생성 (로그인 시)
@@ -35,8 +36,9 @@ public class RefreshTokenSessionService {
             String refreshToken,
             HttpServletRequest request
     ) {
-        // 1. Refresh Token 해싱
+        // 1. Refresh Token 해싱 및 암호화
         String tokenHash = cryptoUtil.hashRefreshToken(refreshToken);
+        String encryptedToken = cryptoUtil.encryptToken(refreshToken);
 
         // 2. 클라이언트 정보 수집
         String ipAddress = getClientIp(request);
@@ -49,6 +51,7 @@ public class RefreshTokenSessionService {
                 .sessionId(UUID.randomUUID())
                 .userId(userId)
                 .refreshTokenHash(tokenHash)
+                .encryptedToken(encryptedToken)
                 .deviceName(deviceName)
                 .ipAddress(encryptedIp)
                 .country(country)
@@ -85,19 +88,47 @@ public class RefreshTokenSessionService {
 
     /**
      * 특정 세션 삭제
+     * - 세션 삭제 시 해당 토큰을 블랙리스트에 추가하여 무효화
      */
     @Transactional
     public void deleteSession(UUID sessionId) {
-        sessionRepository.deleteById(sessionId);
+        // 1. 세션 조회
+        RefreshTokenSession session = sessionRepository.findById(sessionId).orElse(null);
+
+        if (session != null) {
+            // 2. 암호화된 토큰 복호화
+            String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
+
+            // 3. 블랙리스트에 추가 (토큰 무효화)
+            blacklistService.addToBlacklist(refreshToken);
+
+            // 4. 세션 삭제
+            sessionRepository.delete(session);
+
+            log.info("Session deleted and token blacklisted: sessionId={}", sessionId);
+        }
     }
 
     /**
      * 사용자의 모든 세션 삭제 (전체 로그아웃)
+     * - 모든 세션의 토큰을 블랙리스트에 추가하여 무효화
      */
     @Transactional
     public List<RefreshTokenSession> deleteAllUserSessions(Long userId) {
+        // 1. 사용자의 모든 세션 조회
         List<RefreshTokenSession> sessions = sessionRepository.findByUserId(userId);
+
+        // 2. 각 세션의 토큰을 블랙리스트에 추가
+        for (RefreshTokenSession session : sessions) {
+            String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
+            blacklistService.addToBlacklist(refreshToken);
+        }
+
+        // 3. 모든 세션 삭제
         sessionRepository.deleteByUserId(userId);
+
+        log.info("All sessions deleted and tokens blacklisted for user: userId={}, count={}", userId, sessions.size());
+
         return sessions;
     }
 

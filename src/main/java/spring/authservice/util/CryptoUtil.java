@@ -104,6 +104,64 @@ public class CryptoUtil {
     }
 
     /**
+     * Refresh Token 암호화 (AES-256-GCM)
+     * @param token 원본 Refresh Token
+     * @return Base64 인코딩된 암호문
+     */
+    public String encryptToken(String token) {
+        try {
+            SecureRandom random = new SecureRandom();
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            random.nextBytes(iv);
+
+            Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey, spec);
+            byte[] cipherText = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
+
+            // IV + cipherText 결합
+            byte[] encrypted = new byte[GCM_IV_LENGTH + cipherText.length];
+            System.arraycopy(iv, 0, encrypted, 0, GCM_IV_LENGTH);
+            System.arraycopy(cipherText, 0, encrypted, GCM_IV_LENGTH, cipherText.length);
+
+            return Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception e) {
+            log.error("Token 암호화 실패: {}", e.getMessage());
+            throw new RuntimeException("Token 암호화 실패", e);
+        }
+    }
+
+    /**
+     * Refresh Token 복호화 (AES-256-GCM)
+     * @param encryptedBase64 Base64 인코딩된 암호문
+     * @return 원본 Refresh Token
+     */
+    public String decryptToken(String encryptedBase64) {
+        try {
+            byte[] encrypted = Base64.getDecoder().decode(encryptedBase64);
+
+            // IV 추출
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            System.arraycopy(encrypted, 0, iv, 0, GCM_IV_LENGTH);
+
+            // cipherText 추출
+            byte[] cipherText = new byte[encrypted.length - GCM_IV_LENGTH];
+            System.arraycopy(encrypted, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
+
+            // 복호화
+            Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
+            GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, spec);
+            byte[] plainText = cipher.doFinal(cipherText);
+
+            return new String(plainText, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.error("Token 복호화 실패: {}", e.getMessage());
+            throw new RuntimeException("Token 복호화 실패", e);
+        }
+    }
+
+    /**
      * Refresh Token HMAC-SHA256 해싱
      * @param token Refresh Token
      * @return Hex 인코딩된 HMAC (64자)

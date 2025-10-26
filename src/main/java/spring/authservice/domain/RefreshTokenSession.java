@@ -30,7 +30,10 @@ public class RefreshTokenSession {
     private Long userId;
 
     @Column(name = "refresh_token_hash", nullable = false, length = 64)
-    private String refreshTokenHash;  // HMAC-SHA256 (hex, 64자)
+    private String refreshTokenHash;  // HMAC-SHA256 (hex, 64자) - 검색용
+
+    @Column(name = "encrypted_token", nullable = false, length = 512)
+    private String encryptedToken;  // AES-256 암호화된 Refresh Token - 블랙리스트 추가용
 
     @Column(name = "device_name", length = 100)
     private String deviceName;  // "홍길동의 MacBook", "SM-P200"
