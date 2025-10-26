@@ -50,7 +50,9 @@ public class SecurityConfig {
                         // 인증 필요 API
                         .requestMatchers(
                                 "/auths/refresh",                     // 토큰 재발급
-                                "/auths/logout"                       // 로그아웃
+                                "/auths/logout",                      // 로그아웃
+                                "/me/sessions",                       // 세션 목록 조회
+                                "/me/sessions/**"                     // 세션 삭제
                         ).authenticated()
                         // 그 외 모든 요청 허용 (개발 편의)
                         .anyRequest().permitAll()

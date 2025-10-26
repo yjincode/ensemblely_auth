@@ -1,5 +1,6 @@
 package spring.authservice.web;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -24,8 +25,9 @@ public class UserController {
     @PostMapping("/auths/register")
     @ResponseBody
     public ResponseEntity<UserDto.LocalJoinResponse> register(
-            @RequestBody UserDto.LocalJoinRequest request) {
-        return userService.registerUser(request);
+            @RequestBody UserDto.LocalJoinRequest request,
+            HttpServletRequest httpRequest) {
+        return userService.registerUser(request, httpRequest);
     }
 
     @GetMapping("/auths/check-userid")
@@ -38,8 +40,9 @@ public class UserController {
     @PostMapping("/auths/login")
     @ResponseBody
     public ResponseEntity<UserDto.LoginResponse> login(
-            @RequestBody UserDto.LoginRequest request) {
-        return userService.authenticateUser(request);
+            @RequestBody UserDto.LoginRequest request,
+            HttpServletRequest httpRequest) {
+        return userService.authenticateUser(request, httpRequest);
     }
 
     @PostMapping("/auths/email/send-verification")
@@ -99,5 +102,65 @@ public class UserController {
     public ResponseEntity<UserDto.LogoutResponse> logout(
             @CookieValue(value = "refreshToken", required = false) String refreshToken) {
         return userService.logout(refreshToken);
+    }
+
+    // === 세션 관리 API ===
+
+    @GetMapping("/me/sessions")
+    @ResponseBody
+    public ResponseEntity<UserDto.GetSessionsResponse> getSessions(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(UserDto.GetSessionsResponse.builder()
+                            .success(false)
+                            .message("인증이 필요합니다")
+                            .build());
+        }
+
+        Long userId = userService.getUserIdFromRefreshToken(refreshToken);
+        return userService.getSessions(userId);
+    }
+
+    @DeleteMapping("/me/sessions/{sessionId}")
+    @ResponseBody
+    public ResponseEntity<UserDto.DeleteSessionResponse> deleteSession(
+            @PathVariable String sessionId,
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(UserDto.DeleteSessionResponse.builder()
+                            .success(false)
+                            .message("인증이 필요합니다")
+                            .build());
+        }
+
+        Long userId = userService.getUserIdFromRefreshToken(refreshToken);
+        try {
+            return userService.deleteSession(userId, java.util.UUID.fromString(sessionId));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(UserDto.DeleteSessionResponse.builder()
+                            .success(false)
+                            .message("잘못된 세션 ID입니다")
+                            .build());
+        }
+    }
+
+    @DeleteMapping("/me/sessions")
+    @ResponseBody
+    public ResponseEntity<UserDto.DeleteAllSessionsResponse> deleteAllSessions(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(UserDto.DeleteAllSessionsResponse.builder()
+                            .success(false)
+                            .message("인증이 필요합니다")
+                            .deletedCount(0)
+                            .build());
+        }
+
+        Long userId = userService.getUserIdFromRefreshToken(refreshToken);
+        return userService.deleteAllSessions(userId, refreshToken);
     }
 }

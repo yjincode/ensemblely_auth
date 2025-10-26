@@ -158,4 +158,38 @@ public class UserDto {
         private boolean success;
         private String message;
     }
+
+    // === 세션 관리 관련 ===
+
+    @Getter
+    @Builder
+    public static class SessionInfo {
+        private String sessionId;       // UUID
+        private String deviceName;      // 기기명 (예: "iPhone", "Windows PC")
+        private String country;         // 국가 코드 (예: "KR", "US")
+        private String lastUsedAt;      // 마지막 사용 시각 (ISO-8601 형식)
+    }
+
+    @Getter
+    @Builder
+    public static class GetSessionsResponse {
+        private boolean success;
+        private String message;
+        private java.util.List<SessionInfo> sessions;
+    }
+
+    @Getter
+    @Builder
+    public static class DeleteSessionResponse {
+        private boolean success;
+        private String message;
+    }
+
+    @Getter
+    @Builder
+    public static class DeleteAllSessionsResponse {
+        private boolean success;
+        private String message;
+        private int deletedCount;       // 삭제된 세션 수
+    }
 }

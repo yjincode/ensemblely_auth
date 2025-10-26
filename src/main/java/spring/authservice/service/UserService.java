@@ -1,5 +1,6 @@
 package spring.authservice.service;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpHeaders;
@@ -10,13 +11,17 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
+import spring.authservice.domain.RefreshTokenSession;
 import spring.authservice.domain.UserDto;
 import spring.authservice.domain.User;
 import spring.authservice.domain.UserRepository;
 import spring.authservice.util.JwtUtil;
 import spring.authservice.util.PasswordValidator;
 
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -29,11 +34,14 @@ public class UserService {
     private final EmailService emailService;
     private final RedisTemplate<String, String> redisTemplate;
     private final RefreshTokenBlacklistService blacklistService;
+    private final RefreshTokenSessionService sessionService;
 
     private static final String VERIFIED_EMAIL_PREFIX = "verified_email:";
 
     //회원가입
-    public ResponseEntity<UserDto.LocalJoinResponse> registerUser(UserDto.LocalJoinRequest request) {
+    public ResponseEntity<UserDto.LocalJoinResponse> registerUser(
+            UserDto.LocalJoinRequest request,
+            HttpServletRequest httpRequest) {
 
         // 1. 이메일 인증 여부 확인
         if (!isEmailVerified(request.getEmail())) {
@@ -78,7 +86,10 @@ public class UserService {
         String accessToken = tokens[0];
         String refreshToken = tokens[1];
 
-        // 7. 리프레시 토큰을 HttpOnly 쿠키로 설정
+        // 7. 세션 저장
+        sessionService.createSession(user.getId(), refreshToken, httpRequest);
+
+        // 8. 리프레시 토큰을 HttpOnly 쿠키로 설정
         ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
                 .secure(false)  //TODO 배포환경에서는 true로 변경
@@ -117,7 +128,9 @@ public class UserService {
     }
     
     // 로그인 (아이디 + 비밀번호)
-    public ResponseEntity<UserDto.LoginResponse> authenticateUser(UserDto.LoginRequest request) {
+    public ResponseEntity<UserDto.LoginResponse> authenticateUser(
+            UserDto.LoginRequest request,
+            HttpServletRequest httpRequest) {
         // 1. 사용자 존재 여부 확인
         User user = userRepository.findByUserId(request.getUserId())
                 .orElse(null);
@@ -146,7 +159,10 @@ public class UserService {
         String accessToken = tokens[0];
         String refreshToken = tokens[1];
 
-        // 4. 리프레시 토큰을 HttpOnly 쿠키로 설정
+        // 4. 세션 저장
+        sessionService.createSession(user.getId(), refreshToken, httpRequest);
+
+        // 5. 리프레시 토큰을 HttpOnly 쿠키로 설정
         ResponseCookie refreshTokenCookie = ResponseCookie.from("refreshToken", refreshToken)
                 .httpOnly(true)
                 .secure(false)  //TODO 배포환경에서는 true로 변경
@@ -471,6 +487,9 @@ public class UserService {
         String[] tokens = jwtUtil.generateTokens(user);
         String newAccessToken = tokens[0];
 
+        // 7. 세션 last_used_at 업데이트 (비동기)
+        sessionService.updateLastUsedAt(refreshToken);
+
         return ResponseEntity.ok(
                 UserDto.RefreshTokenResponse.builder()
                         .success(true)
@@ -490,6 +509,9 @@ public class UserService {
     public ResponseEntity<UserDto.LogoutResponse> logout(String refreshToken) {
         // 1. Refresh Token이 있는 경우에만 블랙리스트에 추가
         if (refreshToken != null && !refreshToken.isEmpty()) {
+            // 세션 삭제
+            sessionService.deleteSessionByToken(refreshToken);
+            // 블랙리스트 추가
             blacklistService.addToBlacklist(refreshToken);
         }
 
@@ -509,5 +531,92 @@ public class UserService {
                         .message("로그아웃되었습니다")
                         .build()
                 );
+    }
+
+    // === 세션 관리 ===
+
+    /**
+     * Refresh Token에서 사용자 ID 추출
+     * @param refreshToken Refresh Token
+     * @return 사용자 ID
+     */
+    public Long getUserIdFromRefreshToken(String refreshToken) {
+        return jwtUtil.getUserIdFromRefreshToken(refreshToken);
+    }
+
+    /**
+     * 사용자의 모든 세션 조회
+     * @param userId 사용자 ID
+     * @return 세션 목록
+     */
+    public ResponseEntity<UserDto.GetSessionsResponse> getSessions(Long userId) {
+        List<RefreshTokenSession> sessions = sessionService.getUserSessions(userId);
+
+        List<UserDto.SessionInfo> sessionInfoList = sessions.stream()
+                .map(session -> UserDto.SessionInfo.builder()
+                        .sessionId(session.getSessionId().toString())
+                        .deviceName(session.getDeviceName())
+                        .country(session.getCountry())
+                        .lastUsedAt(session.getLastUsedAt().toString())
+                        .build())
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(UserDto.GetSessionsResponse.builder()
+                .success(true)
+                .message("세션 조회 성공")
+                .sessions(sessionInfoList)
+                .build());
+    }
+
+    /**
+     * 특정 세션 삭제
+     * @param userId 사용자 ID
+     * @param sessionId 세션 ID
+     * @return 삭제 결과
+     */
+    public ResponseEntity<UserDto.DeleteSessionResponse> deleteSession(Long userId, UUID sessionId) {
+        // 세션 조회 및 권한 확인
+        RefreshTokenSession session = sessionService.getUserSessions(userId).stream()
+                .filter(s -> s.getSessionId().equals(sessionId))
+                .findFirst()
+                .orElse(null);
+
+        if (session == null) {
+            return ResponseEntity.badRequest()
+                    .body(UserDto.DeleteSessionResponse.builder()
+                            .success(false)
+                            .message("세션을 찾을 수 없습니다")
+                            .build());
+        }
+
+        // 세션 삭제
+        sessionService.deleteSession(sessionId);
+
+        return ResponseEntity.ok(UserDto.DeleteSessionResponse.builder()
+                .success(true)
+                .message("세션이 삭제되었습니다")
+                .build());
+    }
+
+    /**
+     * 모든 세션 삭제 (전체 로그아웃)
+     * @param userId 사용자 ID
+     * @param currentRefreshToken 현재 Refresh Token (삭제 대상에서 제외)
+     * @return 삭제 결과
+     */
+    public ResponseEntity<UserDto.DeleteAllSessionsResponse> deleteAllSessions(
+            Long userId,
+            String currentRefreshToken
+    ) {
+        List<RefreshTokenSession> deletedSessions = sessionService.deleteAllUserSessions(userId);
+
+        // 삭제된 세션들의 토큰을 모두 블랙리스트에 추가 (선택 사항)
+        // 현재는 세션만 삭제하고 토큰은 만료까지 기다림
+
+        return ResponseEntity.ok(UserDto.DeleteAllSessionsResponse.builder()
+                .success(true)
+                .message("모든 세션이 삭제되었습니다")
+                .deletedCount(deletedSessions.size())
+                .build());
     }
 }

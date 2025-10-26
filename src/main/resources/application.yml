@@ -75,3 +75,11 @@ social:
 app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
+
+security:
+  encryption:
+    # AES-256 키 (Base64, 32바이트 = 44자)
+    # 생성: openssl rand -base64 32
+    aes-key: ${AES_ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    # HMAC-SHA256 키 (Base64, 32바이트 = 44자)
+    hmac-key: ${HMAC_SECRET_KEY:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=}

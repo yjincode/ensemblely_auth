@@ -56,7 +56,7 @@ class UserControllerTest {
                 .token("test-jwt-token")
                 .build();
 
-        when(userService.registerUser(any(UserDto.LocalJoinRequest.class)))
+        when(userService.registerUser(any(UserDto.LocalJoinRequest.class), any()))
                 .thenReturn(ResponseEntity.ok(response));
 
         // when & then
@@ -104,7 +104,7 @@ class UserControllerTest {
                 .token("test-jwt-token")
                 .build();
 
-        when(userService.authenticateUser(any(UserDto.LoginRequest.class)))
+        when(userService.authenticateUser(any(UserDto.LoginRequest.class), any()))
                 .thenReturn(ResponseEntity.ok(response));
 
         // when & then
