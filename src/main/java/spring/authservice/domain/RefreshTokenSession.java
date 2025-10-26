@@ -23,7 +23,7 @@ import java.util.UUID;
 public class RefreshTokenSession {
 
     @Id
-    @Column(columnDefinition = "BINARY(16)")
+    @Column(columnDefinition = "uuid")
     private UUID sessionId;
 
     @Column(name = "user_id", nullable = false)
