@@ -139,4 +139,23 @@ public class UserDto {
         private boolean success;
         private String message;
     }
+
+    // === 토큰 재발급 관련 ===
+
+    @Getter
+    @Builder
+    public static class RefreshTokenResponse {
+        private boolean success;
+        private String message;
+        private String token;       // 새로 발급된 Access Token
+    }
+
+    // === 로그아웃 관련 ===
+
+    @Getter
+    @Builder
+    public static class LogoutResponse {
+        private boolean success;
+        private String message;
+    }
 }

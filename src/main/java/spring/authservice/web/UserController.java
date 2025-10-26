@@ -80,7 +80,24 @@ public class UserController {
     @PostMapping("/auths/password/reset/change")
     @ResponseBody
     public ResponseEntity<UserDto.ChangePasswordResponse> changePassword(
-            @RequestBody UserDto.ChangePasswordRequest request) {
-        return userService.changePassword(request);
+            @RequestBody UserDto.ChangePasswordRequest request,
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        return userService.changePassword(request, refreshToken);
+    }
+
+    // === 토큰 관리 API ===
+
+    @PostMapping("/auths/refresh")
+    @ResponseBody
+    public ResponseEntity<UserDto.RefreshTokenResponse> refreshToken(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        return userService.refreshAccessToken(refreshToken);
+    }
+
+    @PostMapping("/auths/logout")
+    @ResponseBody
+    public ResponseEntity<UserDto.LogoutResponse> logout(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        return userService.logout(refreshToken);
     }
 }

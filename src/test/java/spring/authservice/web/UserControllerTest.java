@@ -13,8 +13,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import spring.authservice.domain.UserDto;
 import spring.authservice.service.UserService;
 
+import spring.authservice.config.JwtAuthenticationFilter;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -31,6 +34,9 @@ class UserControllerTest {
 
     @MockBean
     private UserService userService;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Test
     @DisplayName("회원가입 성공")
@@ -241,7 +247,7 @@ class UserControllerTest {
                 .message("비밀번호가 변경되었습니다")
                 .build();
 
-        when(userService.changePassword(any(UserDto.ChangePasswordRequest.class)))
+        when(userService.changePassword(any(UserDto.ChangePasswordRequest.class), nullable(String.class)))
                 .thenReturn(ResponseEntity.ok(response));
 
         // when & then

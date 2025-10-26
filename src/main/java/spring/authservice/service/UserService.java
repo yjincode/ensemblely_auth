@@ -28,7 +28,8 @@ public class UserService {
     private final JwtUtil jwtUtil;
     private final EmailService emailService;
     private final RedisTemplate<String, String> redisTemplate;
-    
+    private final RefreshTokenBlacklistService blacklistService;
+
     private static final String VERIFIED_EMAIL_PREFIX = "verified_email:";
 
     //회원가입
@@ -334,7 +335,9 @@ public class UserService {
     }
 
     // 비밀번호 변경
-    public ResponseEntity<UserDto.ChangePasswordResponse> changePassword(UserDto.ChangePasswordRequest request) {
+    public ResponseEntity<UserDto.ChangePasswordResponse> changePassword(
+            UserDto.ChangePasswordRequest request,
+            String refreshToken) {
         String email = request.getEmail();
         String newPassword = request.getNewPassword();
 
@@ -386,7 +389,12 @@ public class UserService {
                 .build();
         userRepository.save(updatedUser);
 
-        // 6. 인증 정보 삭제
+        // 6. 현재 Refresh Token을 블랙리스트에 추가 (보안 강화: 비밀번호 변경 시 로그아웃)
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            blacklistService.addToBlacklist(refreshToken);
+        }
+
+        // 7. 인증 정보 삭제
         emailService.deletePasswordResetVerification(email);
 
         return ResponseEntity.ok(
@@ -395,5 +403,111 @@ public class UserService {
                         .message("비밀번호가 변경되었습니다")
                         .build()
         );
+    }
+
+    // === 토큰 재발급 ===
+
+    /**
+     * Refresh Token으로 새로운 Access Token 발급
+     * @param refreshToken Refresh Token (쿠키에서 추출)
+     * @return 새로운 Access Token
+     */
+    public ResponseEntity<UserDto.RefreshTokenResponse> refreshAccessToken(String refreshToken) {
+        // 1. Refresh Token이 없는 경우
+        if (refreshToken == null || refreshToken.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                    UserDto.RefreshTokenResponse.builder()
+                            .success(false)
+                            .message("Refresh Token이 없습니다")
+                            .build()
+            );
+        }
+
+        // 2. 블랙리스트 확인 (로그아웃된 토큰)
+        if (blacklistService.isBlacklisted(refreshToken)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                    UserDto.RefreshTokenResponse.builder()
+                            .success(false)
+                            .message("로그아웃된 토큰입니다")
+                            .build()
+            );
+        }
+
+        // 3. Refresh Token 유효성 검증
+        if (!jwtUtil.validateRefreshToken(refreshToken)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                    UserDto.RefreshTokenResponse.builder()
+                            .success(false)
+                            .message("유효하지 않거나 만료된 Refresh Token입니다")
+                            .build()
+            );
+        }
+
+        // 4. Refresh Token에서 userId 추출
+        Long userId;
+        try {
+            userId = jwtUtil.getUserIdFromRefreshToken(refreshToken);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+                    UserDto.RefreshTokenResponse.builder()
+                            .success(false)
+                            .message("토큰 파싱에 실패했습니다")
+                            .build()
+            );
+        }
+
+        // 5. 사용자 존재 확인
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                    UserDto.RefreshTokenResponse.builder()
+                            .success(false)
+                            .message("사용자를 찾을 수 없습니다")
+                            .build()
+            );
+        }
+
+        // 6. 새로운 Access Token 발급 (Refresh Token은 재사용)
+        String[] tokens = jwtUtil.generateTokens(user);
+        String newAccessToken = tokens[0];
+
+        return ResponseEntity.ok(
+                UserDto.RefreshTokenResponse.builder()
+                        .success(true)
+                        .message("토큰이 재발급되었습니다")
+                        .token(newAccessToken)
+                        .build()
+        );
+    }
+
+    // === 로그아웃 ===
+
+    /**
+     * 로그아웃 (Refresh Token을 블랙리스트에 추가)
+     * @param refreshToken Refresh Token (쿠키에서 추출)
+     * @return 로그아웃 결과
+     */
+    public ResponseEntity<UserDto.LogoutResponse> logout(String refreshToken) {
+        // 1. Refresh Token이 있는 경우에만 블랙리스트에 추가
+        if (refreshToken != null && !refreshToken.isEmpty()) {
+            blacklistService.addToBlacklist(refreshToken);
+        }
+
+        // 2. 쿠키 삭제 (클라이언트에서 처리)
+        ResponseCookie deleteCookie = ResponseCookie.from("refreshToken", "")
+                .httpOnly(true)
+                .secure(false)  // TODO 배포환경에서는 true로 변경
+                .path("/")
+                .maxAge(0)  // 즉시 삭제
+                .sameSite("Strict")
+                .build();
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, deleteCookie.toString())
+                .body(UserDto.LogoutResponse.builder()
+                        .success(true)
+                        .message("로그아웃되었습니다")
+                        .build()
+                );
     }
 }
