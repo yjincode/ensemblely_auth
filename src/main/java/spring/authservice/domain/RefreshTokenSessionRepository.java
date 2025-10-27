@@ -40,4 +40,9 @@ public interface RefreshTokenSessionRepository extends JpaRepository<RefreshToke
     @Modifying
     @Query("UPDATE RefreshTokenSession s SET s.lastUsedAt = :now WHERE s.refreshTokenHash = :tokenHash")
     void updateLastUsedAt(@Param("tokenHash") String tokenHash, @Param("now") LocalDateTime now);
+
+    /**
+     * revoked된 세션 조회 (블랙리스트 복구용)
+     */
+    List<RefreshTokenSession> findByRevokedTrue();
 }

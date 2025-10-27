@@ -25,7 +25,7 @@ import java.util.Collections;
  * JWT 인증 필터
  * - Refresh Token을 검증하여 인증 처리
  * - 게이트웨이에서 토큰 파싱하지 않고 Auth 서비스가 직접 검증
- * - 블랙리스트 확인 (세션 삭제 시 자동으로 블랙리스트 추가됨)
+ * - 블랙리스트 확인 (Redis AOF - 영속성 보장)
  */
 @Slf4j
 @Component
@@ -45,14 +45,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (refreshToken != null) {
             try {
-                // 2. 블랙리스트 확인 (세션 삭제 시 자동 추가됨)
+                // 2. 블랙리스트 확인 (Redis AOF - 영속성 보장)
                 if (blacklistService.isBlacklisted(refreshToken)) {
                     log.warn("Blacklisted token detected");
                     filterChain.doFilter(request, response);
                     return;
                 }
 
-                // 3. 토큰 유효성 검증
+                // 3. 토큰 유효성 검증 (만료, 서명)
                 if (jwtUtil.validateRefreshToken(refreshToken)) {
                     // 4. userId 추출
                     Long userId = jwtUtil.getUserIdFromRefreshToken(refreshToken);

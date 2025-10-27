@@ -50,6 +50,13 @@ public class RefreshTokenSession {
     @Column(name = "last_used_at", nullable = false)
     private LocalDateTime lastUsedAt;
 
+    @Builder.Default
+    @Column(name = "revoked", nullable = false)
+    private boolean revoked = false;  // 세션 무효화 여부
+
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;  // 무효화 시각
+
     @PrePersist
     protected void onCreate() {
         if (sessionId == null) {
