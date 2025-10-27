@@ -24,7 +24,6 @@ public class RefreshTokenBlacklistService {
      */
     public void addToBlacklist(String token) {
         String key = BLACKLIST_PREFIX + token;
-        // TTL을 Refresh Token 만료 기간과 동일하게 설정 (메모리 절약)
         redisTemplate.opsForValue().set(key, "blacklisted", BLACKLIST_TTL_DAYS, TimeUnit.DAYS);
     }
 
@@ -54,12 +53,9 @@ public class RefreshTokenBlacklistService {
      * 3. 블랙리스트에 추가 (addToBlacklist)
      * 4. 세션 삭제
      *
-     * @param userId 사용자 ID (미사용)
-     * @param currentToken 현재 사용 중인 토큰 (선택적)
      */
     @Deprecated
-    public void blacklistAllUserTokens(Long userId, String currentToken) {
-        // userId는 사용되지 않음
+    public void blacklistAllUserTokens(String currentToken) {
         if (currentToken != null) {
             addToBlacklist(currentToken);
         }
