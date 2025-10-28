@@ -21,6 +21,18 @@ service UserInfoService {
   rpc GetUserDisplayInfo(UserIdRequest) returns (UserDisplayInfoResponse);
 }
 
+// 토큰 검증 및 관리 서비스 (게이트웨이용)
+service TokenService {
+  // Refresh Token 검증 (게이트웨이 필터용)
+  rpc ValidateRefreshToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Refresh Token으로 Access Token 재발급
+  rpc RefreshAccessToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  // 로그아웃 (세션 무효화)
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
 // === Request Messages ===
 
 message UserIdRequest {
@@ -54,4 +66,56 @@ message UserDisplayInfoResponse {
   string nickname = 2;
   string profile_image_url = 3;
   bool exists = 4;
+}
+
+// === Token Service Messages ===
+
+// 검증 레벨 (어떤 정보를 반환할지)
+enum ValidationLevel {
+  BASIC = 0;              // 인증만 (valid true/false)
+  WITH_USER_ID = 1;       // 인증 + userId
+  WITH_NICKNAME = 2;      // 인증 + userId + nickname
+  WITH_FULL_PROFILE = 3;  // 인증 + userId + nickname + profileImage
+}
+
+// 토큰 검증 요청 (게이트웨이 필터용)
+message ValidateTokenRequest {
+  string access_token = 1;       // Access Token (우선 검증)
+  string refresh_token = 2;      // Refresh Token (Access 만료시 사용)
+  ValidationLevel level = 3;     // 검증 레벨 (기본값: WITH_USER_ID)
+}
+
+// 토큰 검증 응답
+message ValidateTokenResponse {
+  bool valid = 1;                     // 토큰 유효 여부
+  int64 user_id = 2;                  // 사용자 ID (level >= WITH_USER_ID)
+  string error_reason = 3;            // 실패 이유 ("BLACKLISTED", "EXPIRED", "INVALID", "MALFORMED")
+  string new_access_token = 4;        // 새로 발급된 Access Token (Access 만료 시)
+  int64 access_token_expires_in = 5;  // 새 Access Token 만료 시간 (초)
+  string nickname = 6;                // 사용자 닉네임 (level >= WITH_NICKNAME)
+  string profile_image_url = 7;       // 프로필 이미지 URL (level == WITH_FULL_PROFILE)
+}
+
+// Access Token 재발급 요청
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// Access Token 재발급 응답
+message RefreshTokenResponse {
+  bool success = 1;
+  string access_token = 2;       // 새로 발급된 Access Token
+  int64 access_token_expires_in = 3;  // 만료 시간 (초)
+  string message = 4;            // 성공/실패 메시지
+}
+
+// 로그아웃 요청
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+// 로그아웃 응답
+message LogoutResponse {
+  bool success = 1;
+  string message = 2;
 }

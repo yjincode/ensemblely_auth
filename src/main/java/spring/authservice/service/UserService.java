@@ -495,6 +495,7 @@ public class UserService {
                         .success(true)
                         .message("토큰이 재발급되었습니다")
                         .token(newAccessToken)
+                        .accessTokenExpiresIn(jwtUtil.getAccessTokenExpiresIn())
                         .build()
         );
     }
@@ -542,6 +543,15 @@ public class UserService {
      */
     public Long getUserIdFromRefreshToken(String refreshToken) {
         return jwtUtil.getUserIdFromRefreshToken(refreshToken);
+    }
+
+    /**
+     * 사용자 ID로 사용자 정보 조회
+     * @param userId 사용자 ID
+     * @return 사용자 정보
+     */
+    public User getUserById(Long userId) {
+        return userRepository.findById(userId).orElse(null);
     }
 
     /**
@@ -601,22 +611,18 @@ public class UserService {
     /**
      * 모든 세션 삭제 (전체 로그아웃)
      * @param userId 사용자 ID
-     * @param currentRefreshToken 현재 Refresh Token (삭제 대상에서 제외)
      * @return 삭제 결과
      */
     public ResponseEntity<UserDto.DeleteAllSessionsResponse> deleteAllSessions(
-            Long userId,
-            String currentRefreshToken
+            Long userId
     ) {
-        List<RefreshTokenSession> deletedSessions = sessionService.deleteAllUserSessions(userId);
-
-        // 삭제된 세션들의 토큰을 모두 블랙리스트에 추가 (선택 사항)
-        // 현재는 세션만 삭제하고 토큰은 만료까지 기다림
+        // userId로 모든 세션 조회 후 삭제 및 블랙리스트 추가
+        int deletedCount = sessionService.deleteAllUserSessions(userId);
 
         return ResponseEntity.ok(UserDto.DeleteAllSessionsResponse.builder()
                 .success(true)
                 .message("모든 세션이 삭제되었습니다")
-                .deletedCount(deletedSessions.size())
+                .deletedCount(deletedCount)
                 .build());
     }
 }

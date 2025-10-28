@@ -1,6 +1,5 @@
 package spring.authservice.service;
 
-import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,33 +26,7 @@ public class RefreshTokenSessionService {
     private final CryptoUtil cryptoUtil;
     private final GeoIpService geoIpService;
     private final RefreshTokenBlacklistService blacklistService;
-
-    /**
-     * 애플리케이션 시작 시 DB에서 블랙리스트 복구
-     * - Redis AOF가 손실된 경우 대비
-     * - revoked=true인 세션들의 토큰을 블랙리스트에 추가
-     */
-    @PostConstruct
-    public void loadBlacklistFromDatabase() {
-        try {
-            List<RefreshTokenSession> revokedSessions = sessionRepository.findByRevokedTrue();
-
-            int loadedCount = 0;
-            for (RefreshTokenSession session : revokedSessions) {
-                try {
-                    String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
-                    blacklistService.addToBlacklist(refreshToken);
-                    loadedCount++;
-                } catch (Exception e) {
-                    log.warn("Failed to load blacklist for session {}: {}", session.getSessionId(), e.getMessage());
-                }
-            }
-
-            log.info("Loaded {} revoked tokens from DB to Redis blacklist", loadedCount);
-        } catch (Exception e) {
-            log.error("Failed to load blacklist from database: {}", e.getMessage(), e);
-        }
-    }
+    private final SecurityAuditService auditService;
 
     /**
      * 세션 생성 (로그인 시)
@@ -87,7 +60,12 @@ public class RefreshTokenSessionService {
                 .lastUsedAt(LocalDateTime.now())
                 .build();
 
-        return sessionRepository.save(session);
+        RefreshTokenSession savedSession = sessionRepository.save(session);
+
+        // 감사 로그: 세션 생성 (비동기 DB 저장)
+        auditService.logSessionCreated(userId, savedSession.getSessionId(), deviceName, ipAddress, country);
+
+        return savedSession;
     }
 
     /**
@@ -116,25 +94,25 @@ public class RefreshTokenSessionService {
 
     /**
      * 특정 세션 무효화
-     * - DB: revoked=true 설정 (감사 로그용)
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
+     * - DB: 세션 삭제
+     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
     public void deleteSession(UUID sessionId) {
         // 1. 세션 조회
         RefreshTokenSession session = sessionRepository.findById(sessionId).orElse(null);
 
-        if (session != null && !session.isRevoked()) {
-            // 2. DB: 세션 무효화 (감사 로그)
-            RefreshTokenSession revokedSession = session.toBuilder()
-                    .revoked(true)
-                    .revokedAt(LocalDateTime.now())
-                    .build();
-            sessionRepository.save(revokedSession);
-
-            // 3. Redis: 블랙리스트 추가 (필수)
+        if (session != null) {
+            // 2. Redis: 블랙리스트 추가 (필수)
             String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
             blacklistService.addToBlacklist(refreshToken);
+
+            // 3. 감사 로그: 세션 무효화 (비동기 DB 저장, 삭제 전에 호출)
+            auditService.logSessionRevoked(sessionId, session.getUserId(), session.getDeviceName(), "USER_LOGOUT");
+
+            // 4. DB: 세션 삭제
+            sessionRepository.delete(session);
 
             log.info("Session revoked and blacklisted: sessionId={}", sessionId);
         }
@@ -142,64 +120,60 @@ public class RefreshTokenSessionService {
 
     /**
      * 사용자의 모든 세션 무효화 (전체 로그아웃)
-     * - DB: revoked=true 설정 (감사 로그용)
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
+     * - DB: 세션 삭제
+     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
-    public List<RefreshTokenSession> deleteAllUserSessions(Long userId) {
-        // 1. 사용자의 모든 활성 세션 조회
+    public int deleteAllUserSessions(Long userId) {
+        // 1. 사용자의 모든 세션 조회
         List<RefreshTokenSession> sessions = sessionRepository.findByUserId(userId);
-        List<RefreshTokenSession> revokedSessions = new java.util.ArrayList<>();
 
         // 2. 각 세션 무효화
         for (RefreshTokenSession session : sessions) {
-            if (!session.isRevoked()) {
-                // 2-1. DB: 세션 무효화 (감사 로그)
-                RefreshTokenSession revokedSession = session.toBuilder()
-                        .revoked(true)
-                        .revokedAt(LocalDateTime.now())
-                        .build();
-                sessionRepository.save(revokedSession);
-                revokedSessions.add(revokedSession);
-
-                // 2-2. Redis: 블랙리스트 추가 (필수)
-                String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
-                blacklistService.addToBlacklist(refreshToken);
-            }
+            // 2-1. Redis: 블랙리스트 추가 (필수)
+            String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
+            blacklistService.addToBlacklist(refreshToken);
         }
 
-        log.info("All sessions revoked and blacklisted for user: userId={}, count={}", userId, revokedSessions.size());
+        // 3. 감사 로그: 전체 세션 무효화 (비동기 DB 저장)
+        auditService.logAllSessionsRevoked(userId, sessions.size(), "PASSWORD_CHANGE_OR_SECURITY");
 
-        return revokedSessions;
+        // 4. DB: 모든 세션 삭제
+        sessionRepository.deleteByUserId(userId);
+
+        log.info("All sessions revoked and blacklisted for user: userId={}, count={}", userId, sessions.size());
+
+        return sessions.size();
     }
 
     /**
      * 토큰으로 세션 무효화 (단일 로그아웃)
-     * - DB: revoked=true 설정 (감사 로그용)
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
+     * - DB: 세션 삭제
+     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
-    public RefreshTokenSession deleteSessionByToken(String refreshToken) {
+    public boolean deleteSessionByToken(String refreshToken) {
         String tokenHash = cryptoUtil.hashRefreshToken(refreshToken);
         RefreshTokenSession session = sessionRepository.findByRefreshTokenHash(tokenHash).orElse(null);
 
-        if (session != null && !session.isRevoked()) {
-            // DB: 세션 무효화 (감사 로그)
-            RefreshTokenSession revokedSession = session.toBuilder()
-                    .revoked(true)
-                    .revokedAt(LocalDateTime.now())
-                    .build();
-            sessionRepository.save(revokedSession);
-
-            // Redis: 블랙리스트 추가 (필수)
+        if (session != null) {
+            // 1. Redis: 블랙리스트 추가 (필수)
             blacklistService.addToBlacklist(refreshToken);
+
+            // 2. 감사 로그: 토큰으로 세션 무효화 (비동기 DB 저장)
+            auditService.logSessionRevokedByToken(session.getSessionId(), session.getUserId(), session.getDeviceName(), "TOKEN_LOGOUT");
+
+            // 3. DB: 세션 삭제
+            sessionRepository.delete(session);
 
             log.info("Session revoked and blacklisted by token: sessionId={}", session.getSessionId());
 
-            return revokedSession;
+            return true;
         }
 
-        return session;
+        return false;
     }
 
     /**

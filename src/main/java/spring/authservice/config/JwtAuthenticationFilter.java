@@ -15,6 +15,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import spring.authservice.service.RefreshTokenBlacklistService;
+import spring.authservice.service.SecurityAuditService;
 import spring.authservice.util.JwtUtil;
 
 import java.io.IOException;
@@ -34,6 +35,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final RefreshTokenBlacklistService blacklistService;
+    private final SecurityAuditService auditService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -47,7 +49,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 // 2. 블랙리스트 확인 (Redis AOF - 영속성 보장)
                 if (blacklistService.isBlacklisted(refreshToken)) {
-                    log.warn("Blacklisted token detected");
+                    String clientIp = getClientIp(request);
+
+                    // 감사 로그: 블랙리스트 토큰 시도 (비동기 DB 저장)
+                    auditService.logBlacklistedTokenAttempt(clientIp, request.getRequestURI());
+
+                    log.warn("Blacklisted token detected from IP: {}", clientIp);
                     filterChain.doFilter(request, response);
                     return;
                 }
@@ -95,5 +102,32 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 .findFirst()
                 .map(Cookie::getValue)
                 .orElse(null);
+    }
+
+    /**
+     * 클라이언트 IP 추출
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("HTTP_X_FORWARDED_FOR");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+
+        // X-Forwarded-For에 여러 IP가 있을 경우 첫 번째 IP 사용
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+
+        return ip;
     }
 }

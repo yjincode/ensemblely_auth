@@ -88,22 +88,6 @@ public class UserController {
         return userService.changePassword(request, refreshToken);
     }
 
-    // === 토큰 관리 API ===
-
-    @PostMapping("/auths/refresh")
-    @ResponseBody
-    public ResponseEntity<UserDto.RefreshTokenResponse> refreshToken(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        return userService.refreshAccessToken(refreshToken);
-    }
-
-    @PostMapping("/auths/logout")
-    @ResponseBody
-    public ResponseEntity<UserDto.LogoutResponse> logout(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        return userService.logout(refreshToken);
-    }
-
     // === 세션 관리 API ===
 
     @GetMapping("/me/sessions")
@@ -161,6 +145,6 @@ public class UserController {
         }
 
         Long userId = userService.getUserIdFromRefreshToken(refreshToken);
-        return userService.deleteAllSessions(userId, refreshToken);
+        return userService.deleteAllSessions(userId);
     }
 }

@@ -67,6 +67,40 @@ public class JwtUtil {
     }
 
     /**
+     * Access Token에서 userId 추출
+     * @param token Access Token
+     * @return userId (Long)
+     * @throws ExpiredJwtException 만료된 토큰
+     * @throws MalformedJwtException 잘못된 형식의 토큰
+     */
+    public Long getUserIdFromAccessToken(String token) {
+        Claims claims = Jwts.parser()
+                .setSigningKey(jwtProperties.getSecretKey())
+                .parseClaimsJws(token)
+                .getBody();
+
+        return Long.parseLong(claims.getSubject());
+    }
+
+    /**
+     * Access Token 유효성 검증
+     * @param token Access Token
+     * @return 유효하면 true, 아니면 false
+     */
+    public boolean validateAccessToken(String token) {
+        try {
+            Jwts.parser()
+                    .setSigningKey(jwtProperties.getSecretKey())
+                    .parseClaimsJws(token);
+            return true;
+        } catch (ExpiredJwtException e) {
+            return false;
+        } catch (UnsupportedJwtException | MalformedJwtException | IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /**
      * Refresh Token 유효성 검증
      * @param token Refresh Token
      * @return 유효하면 true, 아니면 false
@@ -84,5 +118,12 @@ public class JwtUtil {
             // 잘못된 토큰
             return false;
         }
+    }
+
+    /**
+     * Access Token 만료 시간 (초 단위)
+     */
+    public long getAccessTokenExpiresIn() {
+        return ACCESS_TOKEN_VALIDITY / 1000; // 밀리초 → 초
     }
 }

@@ -148,6 +148,7 @@ public class UserDto {
         private boolean success;
         private String message;
         private String token;       // 새로 발급된 Access Token
+        private long accessTokenExpiresIn;  // Access Token 만료 시간 (초)
     }
 
     // === 로그아웃 관련 ===
