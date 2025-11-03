@@ -9,7 +9,7 @@ import io.jsonwebtoken.UnsupportedJwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import spring.authservice.config.JwtProperties;
-import spring.authservice.domain.User;
+import spring.authservice.domain.model.User;
 
 import java.util.Date;
 

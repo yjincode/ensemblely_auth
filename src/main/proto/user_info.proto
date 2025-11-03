@@ -14,9 +14,6 @@ service UserInfoService {
   // 여러 사용자 닉네임 일괄 조회
   rpc GetUserNicknames(UserIdsRequest) returns (UserNicknamesResponse);
 
-  // 사용자별 최대 워크스페이스 수 조회
-  rpc GetUserMaxWorkspaces(UserIdRequest) returns (UserMaxWorkspacesResponse);
-
   // 사용자 닉네임 + 프로필 이미지 조회
   rpc GetUserDisplayInfo(UserIdRequest) returns (UserDisplayInfoResponse);
 }
@@ -55,12 +52,6 @@ message UserNicknamesResponse {
   repeated UserNicknameResponse users = 1;
 }
 
-message UserMaxWorkspacesResponse {
-  int64 user_id = 1;
-  int32 max_workspaces = 2;
-  bool exists = 3;
-}
-
 message UserDisplayInfoResponse {
   int64 user_id = 1;
   string nickname = 2;
@@ -74,8 +65,6 @@ message UserDisplayInfoResponse {
 enum ValidationLevel {
   BASIC = 0;              // 인증만 (valid true/false)
   WITH_USER_ID = 1;       // 인증 + userId
-  WITH_NICKNAME = 2;      // 인증 + userId + nickname
-  WITH_FULL_PROFILE = 3;  // 인증 + userId + nickname + profileImage
 }
 
 // 토큰 검증 요청 (게이트웨이 필터용)
@@ -92,8 +81,6 @@ message ValidateTokenResponse {
   string error_reason = 3;            // 실패 이유 ("BLACKLISTED", "EXPIRED", "INVALID", "MALFORMED")
   string new_access_token = 4;        // 새로 발급된 Access Token (Access 만료 시)
   int64 access_token_expires_in = 5;  // 새 Access Token 만료 시간 (초)
-  string nickname = 6;                // 사용자 닉네임 (level >= WITH_NICKNAME)
-  string profile_image_url = 7;       // 프로필 이미지 URL (level == WITH_FULL_PROFILE)
 }
 
 // Access Token 재발급 요청

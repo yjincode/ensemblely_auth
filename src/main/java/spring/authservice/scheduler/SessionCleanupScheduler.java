@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import spring.authservice.service.RefreshTokenSessionService;
+import spring.authservice.application.service.RefreshTokenSessionService;
 
 /**
  * 세션 정리 스케줄러
