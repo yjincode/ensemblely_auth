@@ -6,13 +6,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import spring.authservice.application.port.in.*;
 import spring.authservice.domain.vo.UserDto;
-import spring.authservice.application.port.in.RegisterUserUseCase;
-import spring.authservice.application.port.in.AuthenticateUserUseCase;
-import spring.authservice.application.port.in.ManageTokenUseCase;
-import spring.authservice.application.port.in.ManageSessionUseCase;
-import spring.authservice.application.port.in.ResetPasswordUseCase;
-import spring.authservice.application.port.in.QueryUserInfoUseCase;
 
 /**
  * 사용자 인증 API 컨트롤러
@@ -25,10 +21,12 @@ public class UserController {
 
     private final RegisterUserUseCase registerUserUseCase;
     private final AuthenticateUserUseCase authenticateUserUseCase;
-    private final ManageTokenUseCase manageTokenUseCase;
     private final ManageSessionUseCase manageSessionUseCase;
+    private final ManageTokenUseCase manageTokenUseCase;
     private final ResetPasswordUseCase resetPasswordUseCase;
-    private final QueryUserInfoUseCase queryUserInfoUseCase;
+    private final UpdateProfileUseCase updateProfileUseCase;
+    private final SocialLoginUseCase socialLoginUseCase;
+    private final MergeSocialAccountUseCase mergeSocialAccountUseCase;
 
     // === 인증/인가 API ===
 
@@ -46,6 +44,29 @@ public class UserController {
             @RequestBody UserDto.LoginRequest request,
             HttpServletRequest httpRequest) {
         return authenticateUserUseCase.authenticateUser(request, httpRequest);
+    }
+
+    @PostMapping("/auths/logout")
+    @ResponseBody
+    public ResponseEntity<UserDto.LogoutResponse> logout(
+            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
+        return manageTokenUseCase.logout(refreshToken);
+    }
+
+    @PostMapping("/auths/social/login")
+    @ResponseBody
+    public ResponseEntity<UserDto.SocialLoginResponse> socialLogin(
+            @RequestBody UserDto.SocialLoginRequest request,
+            HttpServletRequest httpRequest) {
+        return socialLoginUseCase.socialLogin(request, httpRequest);
+    }
+
+    @PostMapping("/auths/social/merge")
+    @ResponseBody
+    public ResponseEntity<UserDto.SocialMergeResponse> mergeSocialAccount(
+            @RequestBody UserDto.SocialMergeRequest request,
+            HttpServletRequest httpRequest) {
+        return mergeSocialAccountUseCase.mergeSocialAccount(request, httpRequest);
     }
 
     @PostMapping("/auths/email/send-verification")
@@ -83,12 +104,11 @@ public class UserController {
         return resetPasswordUseCase.verifyPasswordResetCode(request);
     }
 
-    @PostMapping("/auths/password/reset/change")
+    @PostMapping("/auths/password/reset")
     @ResponseBody
-    public ResponseEntity<UserDto.ChangePasswordResponse> changePassword(
-            @RequestBody UserDto.ChangePasswordRequest request,
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        return resetPasswordUseCase.changePassword(request, refreshToken);
+    public ResponseEntity<UserDto.ResetPasswordResponse> resetPassword(
+            @RequestBody UserDto.ResetPasswordRequest request) {
+        return resetPasswordUseCase.resetPassword(request);
     }
 
     // === 세션 관리 API ===
@@ -96,16 +116,7 @@ public class UserController {
     @GetMapping("/me/sessions")
     @ResponseBody
     public ResponseEntity<UserDto.GetSessionsResponse> getSessions(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        if (refreshToken == null || refreshToken.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(UserDto.GetSessionsResponse.builder()
-                            .success(false)
-                            .message("인증이 필요합니다")
-                            .build());
-        }
-
-        Long userId = queryUserInfoUseCase.getUserIdFromRefreshToken(refreshToken);
+            @RequestHeader(value = "X-User-Id") Long userId) {
         return manageSessionUseCase.getSessions(userId);
     }
 
@@ -113,16 +124,7 @@ public class UserController {
     @ResponseBody
     public ResponseEntity<UserDto.DeleteSessionResponse> deleteSession(
             @PathVariable String sessionId,
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        if (refreshToken == null || refreshToken.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(UserDto.DeleteSessionResponse.builder()
-                            .success(false)
-                            .message("인증이 필요합니다")
-                            .build());
-        }
-
-        Long userId = queryUserInfoUseCase.getUserIdFromRefreshToken(refreshToken);
+            @RequestHeader(value = "X-User-Id") Long userId) {
         try {
             return manageSessionUseCase.deleteSession(userId, java.util.UUID.fromString(sessionId));
         } catch (IllegalArgumentException e) {
@@ -137,17 +139,49 @@ public class UserController {
     @DeleteMapping("/me/sessions")
     @ResponseBody
     public ResponseEntity<UserDto.DeleteAllSessionsResponse> deleteAllSessions(
-            @CookieValue(value = "refreshToken", required = false) String refreshToken) {
-        if (refreshToken == null || refreshToken.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(UserDto.DeleteAllSessionsResponse.builder()
-                            .success(false)
-                            .message("인증이 필요합니다")
-                            .deletedCount(0)
-                            .build());
-        }
-
-        Long userId = queryUserInfoUseCase.getUserIdFromRefreshToken(refreshToken);
+            @RequestHeader(value = "X-User-Id") Long userId) {
         return manageSessionUseCase.deleteAllSessions(userId);
+    }
+
+    // === 프로필 관리 API ===
+
+    /**
+     * 비밀번호 변경 (로그인 상태)
+     * @param request 비밀번호 변경 요청
+     * @param userId 사용자 ID (게이트웨이에서 전달)
+     * @return 비밀번호 변경 결과
+     */
+    @PutMapping("/me/password")
+    @ResponseBody
+    public ResponseEntity<UserDto.UpdatePasswordResponse> updatePassword(
+            @RequestBody UserDto.UpdatePasswordRequest request,
+            @RequestHeader(value = "X-User-Id") Long userId) {
+        return updateProfileUseCase.updatePassword(userId, request);
+    }
+
+    /**
+     * 프로필 이미지 업로드
+     * @param file 업로드할 이미지 파일 (multipart/form-data)
+     * @param userId 사용자 ID (게이트웨이에서 전달)
+     * @return 업로드 결과
+     */
+    @PostMapping("/me/profile/image")
+    @ResponseBody
+    public ResponseEntity<UserDto.UploadProfileImageResponse> uploadProfileImage(
+            @RequestParam("file") MultipartFile file,
+            @RequestHeader(value = "X-User-Id") Long userId) {
+        return updateProfileUseCase.uploadProfileImage(userId, file);
+    }
+
+    /**
+     * 프로필 이미지 삭제
+     * @param userId 사용자 ID (게이트웨이에서 전달)
+     * @return 삭제 결과
+     */
+    @DeleteMapping("/me/profile/image")
+    @ResponseBody
+    public ResponseEntity<UserDto.DeleteProfileImageResponse> deleteProfileImage(
+            @RequestHeader(value = "X-User-Id") Long userId) {
+        return updateProfileUseCase.deleteProfileImage(userId);
     }
 }

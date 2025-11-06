@@ -33,6 +33,7 @@ public class JwtUtil {
         String accessToken = Jwts.builder()
                 .setSubject(user.getId().toString())
                 .claim("nickname", user.getNickname())  // 프론트엔드에서 사용
+                .claim("profileImageUrl", user.getProfileImageUrl() != null ? user.getProfileImageUrl(): "")
                 .setIssuer(jwtProperties.getIssuer())
                 .setIssuedAt(now)
                 .setExpiration(accessExpiration)

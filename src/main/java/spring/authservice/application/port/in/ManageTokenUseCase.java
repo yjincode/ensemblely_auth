@@ -8,13 +8,7 @@ import spring.authservice.domain.vo.UserDto;
  */
 public interface ManageTokenUseCase {
 
-    /**
-     * Refresh Token으로 새로운 Access Token 발급
-     */
     ResponseEntity<UserDto.RefreshTokenResponse> refreshAccessToken(String refreshToken);
 
-    /**
-     * 로그아웃 (Refresh Token 블랙리스트 추가)
-     */
     ResponseEntity<UserDto.LogoutResponse> logout(String refreshToken);
 }

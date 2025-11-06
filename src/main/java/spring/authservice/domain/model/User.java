@@ -11,7 +11,11 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_email_provider", columnNames = {"email", "auth_provider"})
+        }
+)
 @Getter
 @Builder(toBuilder = true)
 @NoArgsConstructor
@@ -25,7 +29,7 @@ public class User {
     @Column(unique = true)
     private String socialId;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false)
     private String email;
 
     @Column
@@ -38,8 +42,6 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     private AuthProviderEnum authProvider;
-
-    private boolean accountVerified;
 
     // 프로필 이미지 URL (추후 프로필 수정 시 추가 가능)
     @Column(length = 500)

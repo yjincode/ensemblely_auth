@@ -26,7 +26,6 @@ public class RefreshTokenSessionService {
     private final CryptoUtil cryptoUtil;
     private final GeoIpService geoIpService;
     private final RefreshTokenBlacklistService blacklistService;
-    private final SecurityAuditService auditService;
 
     /**
      * 세션 생성 (로그인 시)
@@ -61,9 +60,7 @@ public class RefreshTokenSessionService {
                 .build();
 
         RefreshTokenSession savedSession = sessionRepository.save(session);
-
-        // 감사 로그: 세션 생성 (비동기 DB 저장)
-        auditService.logSessionCreated(userId, savedSession.getSessionId(), deviceName, ipAddress, country);
+        log.info("Session created: userId={}, sessionId={}, device={}", userId, savedSession.getSessionId(), deviceName);
 
         return savedSession;
     }
@@ -96,25 +93,17 @@ public class RefreshTokenSessionService {
      * 특정 세션 무효화
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
      * - DB: 세션 삭제
-     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
     public void deleteSession(UUID sessionId) {
-        // 1. 세션 조회
         RefreshTokenSession session = sessionRepository.findById(sessionId).orElse(null);
 
         if (session != null) {
-            // 2. Redis: 블랙리스트 추가 (필수)
             String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
             blacklistService.addToBlacklist(refreshToken);
-
-            // 3. 감사 로그: 세션 무효화 (비동기 DB 저장, 삭제 전에 호출)
-            auditService.logSessionRevoked(sessionId, session.getUserId(), session.getDeviceName(), "USER_LOGOUT");
-
-            // 4. DB: 세션 삭제
             sessionRepository.delete(session);
 
-            log.info("Session revoked and blacklisted: sessionId={}", sessionId);
+            log.info("Session revoked: userId={}, sessionId={}, device={}", session.getUserId(), sessionId, session.getDeviceName());
         }
     }
 
@@ -122,27 +111,18 @@ public class RefreshTokenSessionService {
      * 사용자의 모든 세션 무효화 (전체 로그아웃)
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
      * - DB: 세션 삭제
-     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
     public int deleteAllUserSessions(Long userId) {
-        // 1. 사용자의 모든 세션 조회
         List<RefreshTokenSession> sessions = sessionRepository.findByUserId(userId);
 
-        // 2. 각 세션 무효화
         for (RefreshTokenSession session : sessions) {
-            // 2-1. Redis: 블랙리스트 추가 (필수)
             String refreshToken = cryptoUtil.decryptToken(session.getEncryptedToken());
             blacklistService.addToBlacklist(refreshToken);
         }
 
-        // 3. 감사 로그: 전체 세션 무효화 (비동기 DB 저장)
-        auditService.logAllSessionsRevoked(userId, sessions.size(), "PASSWORD_CHANGE_OR_SECURITY");
-
-        // 4. DB: 모든 세션 삭제
         sessionRepository.deleteByUserId(userId);
-
-        log.info("All sessions revoked and blacklisted for user: userId={}, count={}", userId, sessions.size());
+        log.info("All sessions revoked: userId={}, count={}", userId, sessions.size());
 
         return sessions.size();
     }
@@ -151,7 +131,6 @@ public class RefreshTokenSessionService {
      * 토큰으로 세션 무효화 (단일 로그아웃)
      * - Redis: 블랙리스트 추가 (필터 검증용, AOF로 영속성 보장)
      * - DB: 세션 삭제
-     * - Audit: 로그 기록 (감사 추적)
      */
     @Transactional
     public boolean deleteSessionByToken(String refreshToken) {
@@ -159,17 +138,9 @@ public class RefreshTokenSessionService {
         RefreshTokenSession session = sessionRepository.findByRefreshTokenHash(tokenHash).orElse(null);
 
         if (session != null) {
-            // 1. Redis: 블랙리스트 추가 (필수)
             blacklistService.addToBlacklist(refreshToken);
-
-            // 2. 감사 로그: 토큰으로 세션 무효화 (비동기 DB 저장)
-            auditService.logSessionRevokedByToken(session.getSessionId(), session.getUserId(), session.getDeviceName(), "TOKEN_LOGOUT");
-
-            // 3. DB: 세션 삭제
             sessionRepository.delete(session);
-
-            log.info("Session revoked and blacklisted by token: sessionId={}", session.getSessionId());
-
+            log.info("Session revoked by token: userId={}, sessionId={}", session.getUserId(), session.getSessionId());
             return true;
         }
 

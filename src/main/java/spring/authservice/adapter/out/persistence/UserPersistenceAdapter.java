@@ -29,6 +29,11 @@ public class UserPersistenceAdapter implements UserPersistencePort {
     }
 
     @Override
+    public Optional<User> findByEmailAndAuthProvider(String email, AuthProviderEnum authProvider) {
+        return userRepository.findByEmailAndAuthProvider(email, authProvider);
+    }
+
+    @Override
     public Optional<User> findById(Long userId) {
         return userRepository.findById(userId);
     }
@@ -36,6 +41,11 @@ public class UserPersistenceAdapter implements UserPersistencePort {
     @Override
     public boolean existsByEmail(String email) {
         return userRepository.existsByEmail(email);
+    }
+
+    @Override
+    public boolean existsByEmailAndAuthProvider(String email, AuthProviderEnum authProvider) {
+        return userRepository.existsByEmailAndAuthProvider(email, authProvider);
     }
 
     @Override

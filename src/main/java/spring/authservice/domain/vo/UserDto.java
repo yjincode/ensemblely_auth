@@ -29,7 +29,6 @@ public class UserDto {
                     .username(username)
                     .password(bCryptPasswordEncoder.encode(password.toLowerCase()))  // 대소문자 구분 안함
                     .authProvider(AuthProviderEnum.EMAIL)
-                    .accountVerified(false)     // 초기 가입시 미인증 상태
                     .build();
         }
     }
@@ -39,7 +38,7 @@ public class UserDto {
     public static class LocalJoinResponse {
         private boolean success;
         private String message;
-        private String token;       // JWT 토큰 (회원가입 성공시 자동 로그인)
+        private String accessToken;       // JWT 토큰 (회원가입 성공시 자동 로그인)
     }
 
     // === 로그인 관련 ===
@@ -56,7 +55,7 @@ public class UserDto {
     public static class LoginResponse {
         private boolean success;
         private String message;
-        private String token;       // JWT 토큰 (로그인 성공시에만)
+        private String accessToken;       // JWT 토큰 (로그인 성공시에만)
     }
 
     // === 이메일 인증 관련 ===
@@ -88,7 +87,7 @@ public class UserDto {
         private String message;
     }
 
-    // === 비밀번호 재설정 관련 ===
+    // === 비밀번호 재설정 관련 (이메일 인증 - Public API) ===
 
     @Getter
     @Builder
@@ -119,14 +118,47 @@ public class UserDto {
 
     @Getter
     @Builder
-    public static class ChangePasswordRequest {
+    public static class ResetPasswordRequest {
         private String email;
         private String newPassword;
     }
 
     @Getter
     @Builder
-    public static class ChangePasswordResponse {
+    public static class ResetPasswordResponse {
+        private boolean success;
+        private String message;
+    }
+
+    // === 비밀번호 변경 관련 (로그인 상태 - Authenticated API) ===
+
+    @Getter
+    @Builder
+    public static class UpdatePasswordRequest {
+        private String currentPassword;
+        private String newPassword;
+    }
+
+    @Getter
+    @Builder
+    public static class UpdatePasswordResponse {
+        private boolean success;
+        private String message;
+    }
+
+    // === 프로필 이미지 관련 ===
+
+    @Getter
+    @Builder
+    public static class UploadProfileImageResponse {
+        private boolean success;
+        private String message;
+        private String imageUrl;
+    }
+
+    @Getter
+    @Builder
+    public static class DeleteProfileImageResponse {
         private boolean success;
         private String message;
     }
@@ -138,7 +170,7 @@ public class UserDto {
     public static class RefreshTokenResponse {
         private boolean success;
         private String message;
-        private String token;       // 새로 발급된 Access Token
+        private String accessToken;       // 새로 발급된 Access Token
         private long accessTokenExpiresIn;  // Access Token 만료 시간 (초)
     }
 
@@ -183,5 +215,42 @@ public class UserDto {
         private boolean success;
         private String message;
         private int deletedCount;       // 삭제된 세션 수
+    }
+
+    // === 소셜 로그인 관련 ===
+
+    @Getter
+    @Builder
+    public static class SocialLoginRequest {
+        private String provider;        // "naver", "kakao", "google"
+        private String accessToken;     // 프론트엔드에서 받은 OAuth Access Token
+    }
+
+    @Getter
+    @Builder
+    public static class SocialLoginResponse {
+        private boolean success;
+        private String message;
+        private String accessToken;     // 자체 JWT Access Token (통합 필요 시 null)
+        private boolean isNewUser;      // 신규 가입 여부
+        private Boolean mergeRequired;  // 계정 통합 필요 여부 (409일 때만 true)
+        private String email;           // 통합 대상 이메일 (409일 때만 포함)
+    }
+
+    @Getter
+    @Builder
+    public static class SocialMergeRequest {
+        private String email;           // 기존 계정 이메일
+        private String password;        // 기존 계정 비밀번호 (본인 인증)
+        private String provider;        // "naver", "kakao", "google"
+        private String accessToken;     // 소셜 Access Token
+    }
+
+    @Getter
+    @Builder
+    public static class SocialMergeResponse {
+        private boolean success;
+        private String message;
+        private String accessToken;     // 자체 JWT Access Token
     }
 }

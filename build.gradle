@@ -51,6 +51,9 @@ dependencies {
     // Reactive gRPC (Gateway 호환용)
     implementation 'com.salesforce.servicelibs:reactor-grpc-stub:1.2.4'
 
+    // AWS S3 (프로필 이미지 저장)
+    implementation 'software.amazon.awssdk:s3:2.20.26'
+
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'

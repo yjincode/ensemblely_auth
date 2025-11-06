@@ -160,11 +160,7 @@ class UserControllerTest {
     @DisplayName("세션 조회 - 인증된 사용자")
     void getSessions_Success() {
         // Given
-        String refreshToken = "mock-refresh-token";
         Long userId = 1L;
-
-        when(queryUserInfoUseCase.getUserIdFromRefreshToken(refreshToken))
-                .thenReturn(userId);
 
         UserDto.GetSessionsResponse expectedResponse = UserDto.GetSessionsResponse.builder()
                 .success(true)
@@ -177,14 +173,13 @@ class UserControllerTest {
 
         // When
         ResponseEntity<UserDto.GetSessionsResponse> response =
-                userController.getSessions(refreshToken);
+                userController.getSessions(userId);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().isSuccess()).isTrue();
 
-        verify(queryUserInfoUseCase, times(1)).getUserIdFromRefreshToken(refreshToken);
         verify(manageSessionUseCase, times(1)).getSessions(userId);
     }
 
@@ -192,12 +187,8 @@ class UserControllerTest {
     @DisplayName("특정 세션 삭제 성공")
     void deleteSession_Success() {
         // Given
-        String refreshToken = "mock-refresh-token";
         String sessionId = UUID.randomUUID().toString();
         Long userId = 1L;
-
-        when(queryUserInfoUseCase.getUserIdFromRefreshToken(refreshToken))
-                .thenReturn(userId);
 
         UserDto.DeleteSessionResponse expectedResponse = UserDto.DeleteSessionResponse.builder()
                 .success(true)
@@ -209,14 +200,13 @@ class UserControllerTest {
 
         // When
         ResponseEntity<UserDto.DeleteSessionResponse> response =
-                userController.deleteSession(sessionId, refreshToken);
+                userController.deleteSession(sessionId, userId);
 
         // Then
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().isSuccess()).isTrue();
 
-        verify(queryUserInfoUseCase, times(1)).getUserIdFromRefreshToken(refreshToken);
         verify(manageSessionUseCase, times(1)).deleteSession(eq(userId), any(UUID.class));
     }
 

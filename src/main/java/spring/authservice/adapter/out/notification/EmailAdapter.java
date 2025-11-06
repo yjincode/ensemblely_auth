@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import spring.authservice.application.port.out.EmailPort;
 import spring.authservice.application.service.EmailService;
+import spring.authservice.application.service.EmailService.RateLimitResult;
 
 /**
  * 이메일 발송 어댑터
@@ -16,7 +17,7 @@ public class EmailAdapter implements EmailPort {
     private final EmailService emailService;
 
     @Override
-    public boolean sendVerificationEmail(String email) {
+    public RateLimitResult sendVerificationEmail(String email) {
         return emailService.sendVerificationEmail(email);
     }
 
@@ -31,12 +32,7 @@ public class EmailAdapter implements EmailPort {
     }
 
     @Override
-    public void deleteVerificationCode(String email) {
-        emailService.deleteVerificationCode(email);
-    }
-
-    @Override
-    public boolean sendPasswordResetCode(String email) {
+    public RateLimitResult sendPasswordResetCode(String email) {
         return emailService.sendPasswordResetCode(email);
     }
 

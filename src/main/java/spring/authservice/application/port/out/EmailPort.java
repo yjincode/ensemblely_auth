@@ -1,5 +1,7 @@
 package spring.authservice.application.port.out;
 
+import spring.authservice.application.service.EmailService.RateLimitResult;
+
 /**
  * 이메일 발송 Port (Outbound)
  * - SMTP, AWS SES, SendGrid 등 다양한 구현체 가능
@@ -8,9 +10,9 @@ public interface EmailPort {
 
     /**
      * 이메일 인증 코드 발송
-     * @return 발송 성공 여부
+     * @return Rate Limit 결과 (ALLOWED, MINUTE_LIMIT, DAILY_LIMIT)
      */
-    boolean sendVerificationEmail(String email);
+    RateLimitResult sendVerificationEmail(String email);
 
     /**
      * 이메일 인증 코드 검증
@@ -24,15 +26,10 @@ public interface EmailPort {
     String verifyEmailByTokenAndGetEmail(String token);
 
     /**
-     * 인증 코드 삭제
-     */
-    void deleteVerificationCode(String email);
-
-    /**
      * 비밀번호 재설정 코드 발송
-     * @return 발송 성공 여부
+     * @return Rate Limit 결과 (ALLOWED, MINUTE_LIMIT, DAILY_LIMIT)
      */
-    boolean sendPasswordResetCode(String email);
+    RateLimitResult sendPasswordResetCode(String email);
 
     /**
      * 비밀번호 재설정 코드 검증

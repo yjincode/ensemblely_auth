@@ -30,8 +30,9 @@ public class EmailService {
     @Value("${server.port:9001}")
     private String serverPort;
     
-    private static final String EMAIL_VERIFICATION_PREFIX = "email_verification:";
-    private static final String TOKEN_VERIFICATION_PREFIX = "email_verification_token:";
+    private static final String TOKEN_PREFIX = "token:";
+    private static final String CODE_PREFIX = "code:";
+    private static final String VERIFIED_PREFIX = "verified:";
     private static final String EMAIL_RATE_LIMIT_PREFIX = "email_rate_limit:";
     private static final String PASSWORD_RESET_CODE_PREFIX = "password_reset_code:";
     private static final String PASSWORD_RESET_VERIFIED_PREFIX = "password_reset_verified:";
@@ -59,26 +60,32 @@ public class EmailService {
     
     /**
      * 이메일 인증 발송 (코드 + 링크 둘 다 발송)
+     * 양방향 참조 패턴: token:{token} ↔ code:{code}
      */
-    public boolean sendVerificationEmail(String email) {
+    public RateLimitResult sendVerificationEmail(String email) {
         // 1. Rate Limiting 체크
-        if (!checkRateLimit(email)) {
-            log.warn("이메일 발송 제한 초과: {}", email);
-            return false;
+        RateLimitResult rateLimitResult = checkRateLimit(email);
+        if (rateLimitResult != RateLimitResult.ALLOWED) {
+            log.warn("이메일 발송 제한 초과: {} - {}", email, rateLimitResult);
+            return rateLimitResult;
         }
 
         try {
-            // 1. 인증코드 생성 및 Redis 저장
+            // 2. 인증코드 및 토큰 생성
             String verificationCode = generateVerificationCode();
-            String redisKey = EMAIL_VERIFICATION_PREFIX + email;
-            redisTemplate.opsForValue().set(redisKey, verificationCode, VERIFICATION_CODE_TTL);
-            log.info("인증코드 Redis 저장 완료: {}", email);
-
-            // 2. 인증토큰 생성 및 Redis 저장
             String verificationToken = UUID.randomUUID().toString().replace("-", "");
-            String tokenRedisKey = TOKEN_VERIFICATION_PREFIX + verificationToken;
-            redisTemplate.opsForValue().set(tokenRedisKey, email, VERIFICATION_CODE_TTL);
-            log.info("인증토큰 Redis 저장 완료: {} -> {}", verificationToken, email);
+
+            // token:{token} → email:code
+            String tokenKey = TOKEN_PREFIX + verificationToken;
+            String tokenValue = email + ":" + verificationCode;
+            redisTemplate.opsForValue().set(tokenKey, tokenValue, VERIFICATION_CODE_TTL);
+
+            // code:{code} → email:token
+            String codeKey = CODE_PREFIX + verificationCode;
+            String codeValue = email + ":" + verificationToken;
+            redisTemplate.opsForValue().set(codeKey, codeValue, VERIFICATION_CODE_TTL);
+
+            log.info("양방향 참조 Redis 저장 완료 - email: {}, token: {}, code: {}", email, verificationToken, verificationCode);
 
             // 3. HTML 이메일 발송 (코드 + 링크)
             sendHtmlEmail(email, verificationCode, verificationToken);
@@ -87,14 +94,14 @@ public class EmailService {
             incrementRateLimit(email);
 
             log.info("이메일 인증 발송 성공: {}", email);
-            return true;
+            return RateLimitResult.ALLOWED;
 
         } catch (MailException | MessagingException e) {
             log.error("이메일 발송 실패: {}, 오류: {}", email, e.getMessage());
-            return false;
+            return RateLimitResult.ALLOWED; // 실패해도 재시도 가능하도록
         } catch (Exception e) {
             log.error("인증 발송 중 예외 발생: {}, 오류: {}", email, e.getMessage());
-            return false;
+            return RateLimitResult.ALLOWED; // 실패해도 재시도 가능하도록
         }
     }
     
@@ -125,30 +132,37 @@ public class EmailService {
     }
     
     /**
-     * 이메일 인증코드 검증
+     * 이메일 인증코드 검증 (양방향 참조 패턴)
      */
     public boolean verifyEmailCode(String email, String inputCode) {
         try {
-            String redisKey = EMAIL_VERIFICATION_PREFIX + email;
-            String storedCode = redisTemplate.opsForValue().get(redisKey);
-            
-            if (storedCode == null) {
-                log.warn("인증코드가 만료되거나 존재하지 않음: {}", email);
+            // code:{code} → email:token
+            String codeKey = CODE_PREFIX + inputCode;
+            String codeValue = redisTemplate.opsForValue().get(codeKey);
+
+            if (codeValue == null) {
+                log.warn("인증코드가 만료되거나 존재하지 않음: {}", inputCode);
                 return false;
             }
-            
-            boolean isValid = storedCode.equals(inputCode);
-            
-            if (isValid) {
-                // 인증 성공시 Redis에서 코드 삭제
-                redisTemplate.delete(redisKey);
-                log.info("이메일 인증 성공: {}", email);
-            } else {
-                log.warn("잘못된 인증코드 입력: {}", email);
+
+            String[] parts = codeValue.split(":");
+            String storedEmail = parts[0];
+            String token = parts[1];
+
+            // 이메일 일치 확인
+            if (!storedEmail.equals(email)) {
+                log.warn("이메일 불일치 - 입력: {}, 저장: {}", email, storedEmail);
+                return false;
             }
-            
-            return isValid;
-            
+
+            // 인증 성공 - 양방향 키 모두 삭제
+            String tokenKey = TOKEN_PREFIX + token;
+            redisTemplate.delete(codeKey);
+            redisTemplate.delete(tokenKey);
+
+            log.info("이메일 인증 성공 (코드 방식): {}", email);
+            return true;
+
         } catch (Exception e) {
             log.error("인증코드 검증 중 예외 발생: {}, 오류: {}", email, e.getMessage());
             return false;
@@ -156,87 +170,75 @@ public class EmailService {
     }
 
     /**
-     * 단순 토큰으로 이메일 인증 후 이메일 주소 반환
+     * 단순 토큰으로 이메일 인증 후 이메일 주소 반환 (양방향 참조 패턴)
      */
     public String verifyEmailByTokenAndGetEmail(String token) {
         try {
-            // 1. Redis에서 토큰으로 이메일 찾기
-            String tokenRedisKey = TOKEN_VERIFICATION_PREFIX + token;
-            String email = redisTemplate.opsForValue().get(tokenRedisKey);
-            
-            if (email == null) {
+            // token:{token} → email:code
+            String tokenKey = TOKEN_PREFIX + token;
+            String tokenValue = redisTemplate.opsForValue().get(tokenKey);
+
+            if (tokenValue == null) {
                 log.warn("토큰이 만료되거나 존재하지 않음: {}", token);
                 return null;
             }
-            
-            // 2. 인증 성공시 Redis에서 토큰과 코드 모두 삭제
-            redisTemplate.delete(tokenRedisKey);
-            String codeRedisKey = EMAIL_VERIFICATION_PREFIX + email;
-            redisTemplate.delete(codeRedisKey);
-            
+
+            String[] parts = tokenValue.split(":");
+            String email = parts[0];
+            String code = parts[1];
+
+            // 인증 성공 - 양방향 키 모두 삭제
+            String codeKey = CODE_PREFIX + code;
+            redisTemplate.delete(tokenKey);
+            redisTemplate.delete(codeKey);
+
             log.info("토큰 기반 이메일 인증 성공: {} (token: {})", email, token);
             return email;
-            
+
         } catch (Exception e) {
             log.error("토큰 인증 중 예외 발생: 오류: {}", e.getMessage());
             return null;
         }
     }
     
-    /**
-     * 특정 이메일의 인증코드와 토큰 삭제 (재발송 시 기존 데이터 제거용)
-     */
-    public void deleteVerificationCode(String email) {
-        try {
-            // 1. 코드 삭제
-            String codeRedisKey = EMAIL_VERIFICATION_PREFIX + email;
-            redisTemplate.delete(codeRedisKey);
-            
-            // 2. 해당 이메일의 기존 토큰들 찾아서 삭제
-            Set<String> tokenKeys = redisTemplate.keys(TOKEN_VERIFICATION_PREFIX + "*");
-            if (tokenKeys != null) {
-                for (String tokenKey : tokenKeys) {
-                    String storedEmail = redisTemplate.opsForValue().get(tokenKey);
-                    if (email.equals(storedEmail)) {
-                        redisTemplate.delete(tokenKey);
-                    }
-                }
-            }
-            
-            log.info("기존 인증 데이터 삭제 완료: {}", email);
-        } catch (Exception e) {
-            log.error("인증 데이터 삭제 중 예외 발생: {}, 오류: {}", email, e.getMessage());
-        }
-    }
     
+    /**
+     * Rate Limiting 체크 결과
+     */
+    public enum RateLimitResult {
+        ALLOWED,           // 허용
+        MINUTE_LIMIT,      // 1분 제한 초과
+        DAILY_LIMIT        // 일일 제한 초과
+    }
+
     /**
      * Rate Limiting 체크 (1분에 1개, 하루에 10개 제한)
      */
-    private boolean checkRateLimit(String email) {
+    public RateLimitResult checkRateLimit(String email) {
         try {
             // 1분 제한 체크
             String minuteKey = EMAIL_RATE_LIMIT_PREFIX + "minute:" + email;
             String minuteCount = redisTemplate.opsForValue().get(minuteKey);
-            
+
             if (minuteCount != null && Integer.parseInt(minuteCount) >= MAX_EMAIL_PER_MINUTE) {
                 log.warn("1분 이메일 발송 제한 초과: {} (현재: {}개)", email, minuteCount);
-                return false;
+                return RateLimitResult.MINUTE_LIMIT;
             }
-            
+
             // 하루 제한 체크
             String dailyKey = EMAIL_RATE_LIMIT_PREFIX + "daily:" + email;
             String dailyCount = redisTemplate.opsForValue().get(dailyKey);
-            
+
             if (dailyCount != null && Integer.parseInt(dailyCount) >= MAX_EMAIL_PER_DAY) {
                 log.warn("일일 이메일 발송 제한 초과: {} (현재: {}개)", email, dailyCount);
-                return false;
+                return RateLimitResult.DAILY_LIMIT;
             }
-            
-            return true;
-            
+
+            return RateLimitResult.ALLOWED;
+
         } catch (Exception e) {
             log.error("Rate limiting 체크 중 예외 발생: {}, 오류: {}", email, e.getMessage());
-            return true; // 에러 시에는 허용
+            return RateLimitResult.ALLOWED; // 에러 시에는 허용
         }
     }
     
@@ -279,35 +281,36 @@ public class EmailService {
     /**
      * 비밀번호 재설정 인증코드 발송
      */
-    public boolean sendPasswordResetCode(String email) {
+    public RateLimitResult sendPasswordResetCode(String email) {
         // 1. Rate Limiting 체크
-        if (!checkRateLimit(email)) {
-            log.warn("비밀번호 재설정 이메일 발송 제한 초과: {}", email);
-            return false;
+        RateLimitResult rateLimitResult = checkRateLimit(email);
+        if (rateLimitResult != RateLimitResult.ALLOWED) {
+            log.warn("비밀번호 재설정 이메일 발송 제한 초과: {} - {}", email, rateLimitResult);
+            return rateLimitResult;
         }
 
         try {
-            // 1. 인증코드 생성 및 Redis 저장
+            // 2. 인증코드 생성 및 Redis 저장
             String verificationCode = generateVerificationCode();
             String redisKey = PASSWORD_RESET_CODE_PREFIX + email;
             redisTemplate.opsForValue().set(redisKey, verificationCode, VERIFICATION_CODE_TTL);
             log.info("비밀번호 재설정 인증코드 Redis 저장 완료: {}", email);
 
-            // 2. 이메일 발송
+            // 3. 이메일 발송
             sendPasswordResetEmail(email, verificationCode);
 
-            // 3. Rate Limit 카운터 증가
+            // 4. Rate Limit 카운터 증가
             incrementRateLimit(email);
 
             log.info("비밀번호 재설정 인증코드 발송 성공: {}", email);
-            return true;
+            return RateLimitResult.ALLOWED;
 
         } catch (MailException | MessagingException e) {
             log.error("비밀번호 재설정 이메일 발송 실패: {}, 오류: {}", email, e.getMessage());
-            return false;
+            return RateLimitResult.ALLOWED; // 실패해도 재시도 가능하도록
         } catch (Exception e) {
             log.error("비밀번호 재설정 코드 발송 중 예외 발생: {}, 오류: {}", email, e.getMessage());
-            return false;
+            return RateLimitResult.ALLOWED; // 실패해도 재시도 가능하도록
         }
     }
 
