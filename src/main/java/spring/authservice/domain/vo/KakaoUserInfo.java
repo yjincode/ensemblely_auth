@@ -22,9 +22,6 @@ public class KakaoUserInfo {
     @NoArgsConstructor
     public static class KakaoAccount {
 
-        @JsonProperty("email")
-        private String email;
-
         @JsonProperty("profile")
         private Profile profile;
 
@@ -45,13 +42,6 @@ public class KakaoUserInfo {
      */
     public boolean isSuccess() {
         return id != null && kakaoAccount != null;
-    }
-
-    /**
-     * 이메일 추출
-     */
-    public String getEmail() {
-        return kakaoAccount != null ? kakaoAccount.getEmail() : null;
     }
 
     /**

@@ -6,6 +6,7 @@ import spring.authservice.application.port.out.UserPersistencePort;
 import spring.authservice.domain.model.AuthProviderEnum;
 import spring.authservice.domain.model.User;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -26,6 +27,16 @@ public class UserPersistenceAdapter implements UserPersistencePort {
     @Override
     public Optional<User> findByEmail(String email) {
         return userRepository.findByEmail(email);
+    }
+
+    @Override
+    public List<User> findAllByEmail(String email) {
+        return userRepository.findAllByEmail(email);
+    }
+
+    @Override
+    public List<User> findByEmailAndAuthProviderIn(String email, List<AuthProviderEnum> providers) {
+        return userRepository.findByEmailAndAuthProviderIn(email, providers);
     }
 
     @Override

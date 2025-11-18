@@ -29,11 +29,14 @@ public class OAuth2Properties {
     @Setter
     public static class KakaoConfig {
         private String clientId;
+        private String redirectUri;
     }
 
     @Getter
     @Setter
     public static class GoogleConfig {
         private String clientId;
+        private String clientSecret;
+        private String redirectUri;
     }
 }

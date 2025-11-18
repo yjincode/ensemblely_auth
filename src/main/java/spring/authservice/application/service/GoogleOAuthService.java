@@ -9,38 +9,38 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import spring.authservice.adapter.out.oauth.GoogleUserInfo;
 import spring.authservice.config.OAuth2Properties;
-import spring.authservice.domain.vo.KakaoUserInfo;
 
 /**
- * 카카오 OAuth 검증 서비스
+ * 구글 OAuth 검증 서비스
  * - Authorization Code를 Access Token으로 교환
  * - 사용자 정보 조회
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class KakaoOAuthService {
+public class GoogleOAuthService {
 
     private final OAuth2Properties oAuth2Properties;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    private static final String KAKAO_TOKEN_URL = "https://kauth.kakao.com/oauth/token";
-    private static final String KAKAO_USER_INFO_URL = "https://kapi.kakao.com/v2/user/me";
+    private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+    private static final String GOOGLE_USER_INFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
     /**
      * Authorization Code를 Access Token으로 교환 후 사용자 정보 조회
      *
      * @param code 프론트엔드에서 받은 Authorization Code
-     * @param redirectUri 카카오에 등록된 Redirect URI
-     * @return 카카오 사용자 정보 (검증 실패 시 null)
+     * @param redirectUri 구글에 등록된 Redirect URI
+     * @return 구글 사용자 정보 (검증 실패 시 null)
      */
-    public KakaoUserInfo exchangeCodeForUserInfo(String code, String redirectUri) {
+    public GoogleUserInfo exchangeCodeForUserInfo(String code, String redirectUri) {
         try {
             // 1. Authorization Code → Access Token 교환
             String accessToken = getAccessToken(code, redirectUri);
             if (accessToken == null) {
-                log.warn("카카오 액세스 토큰 발급 실패");
+                log.warn("구글 액세스 토큰 발급 실패");
                 return null;
             }
 
@@ -48,7 +48,7 @@ public class KakaoOAuthService {
             return getUserInfo(accessToken);
 
         } catch (Exception e) {
-            log.error("카카오 OAuth 처리 중 예상치 못한 오류 발생", e);
+            log.error("구글 OAuth 처리 중 예상치 못한 오류 발생", e);
             return null;
         }
     }
@@ -58,9 +58,12 @@ public class KakaoOAuthService {
      */
     private String getAccessToken(String code, String redirectUri) {
         try {
-            String clientId = oAuth2Properties.getKakao().getClientId();
-            log.info("카카오 토큰 교환 시도: clientId={}, redirectUri={}, code={}",
-                    clientId != null ? clientId.substring(0, Math.min(10, clientId.length())) + "..." : "null",
+            String clientId = oAuth2Properties.getGoogle().getClientId();
+            String clientSecret = oAuth2Properties.getGoogle().getClientSecret();
+
+            log.info("구글 토큰 교환 시도: clientId={}, clientSecret={}, redirectUri={}, code={}",
+                    clientId != null ? clientId.substring(0, Math.min(15, clientId.length())) + "..." : "null",
+                    clientSecret != null ? "존재" : "null",
                     redirectUri,
                     code != null ? "존재" : "null");
 
@@ -70,13 +73,14 @@ public class KakaoOAuthService {
             MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
             params.add("grant_type", "authorization_code");
             params.add("client_id", clientId);
+            params.add("client_secret", clientSecret);
             params.add("redirect_uri", redirectUri);
             params.add("code", code);
 
             HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
 
             ResponseEntity<JsonNode> response = restTemplate.exchange(
-                    KAKAO_TOKEN_URL,
+                    GOOGLE_TOKEN_URL,
                     HttpMethod.POST,
                     request,
                     JsonNode.class
@@ -85,18 +89,18 @@ public class KakaoOAuthService {
             JsonNode body = response.getBody();
             if (body != null && body.has("access_token")) {
                 String accessToken = body.get("access_token").asText();
-                log.info("카카오 액세스 토큰 발급 성공");
+                log.info("구글 액세스 토큰 발급 성공");
                 return accessToken;
             }
 
             return null;
 
         } catch (HttpClientErrorException e) {
-            log.warn("카카오 토큰 교환 오류: status={}, body={}",
+            log.warn("구글 토큰 교환 오류: status={}, body={}",
                     e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
-            log.error("카카오 토큰 교환 중 예상치 못한 오류 발생", e);
+            log.error("구글 토큰 교환 중 예상치 못한 오류 발생", e);
             return null;
         }
     }
@@ -104,36 +108,34 @@ public class KakaoOAuthService {
     /**
      * Access Token으로 사용자 정보 조회
      */
-    private KakaoUserInfo getUserInfo(String accessToken) {
+    private GoogleUserInfo getUserInfo(String accessToken) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.add("Authorization", "Bearer " + accessToken);
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-            ResponseEntity<KakaoUserInfo> response = restTemplate.exchange(
-                    KAKAO_USER_INFO_URL,
+            ResponseEntity<GoogleUserInfo> response = restTemplate.exchange(
+                    GOOGLE_USER_INFO_URL,
                     HttpMethod.GET,
                     new HttpEntity<>(headers),
-                    KakaoUserInfo.class
+                    GoogleUserInfo.class
             );
 
-            KakaoUserInfo userInfo = response.getBody();
+            GoogleUserInfo userInfo = response.getBody();
 
             if (userInfo != null && userInfo.isSuccess()) {
+                log.info("구글 사용자 정보 조회 성공: email={}", userInfo.getEmail());
                 return userInfo;
             } else {
-                log.warn("카카오 사용자 정보 조회 실패: id={}, kakaoAccount={}",
-                        userInfo != null ? userInfo.getId() : "null",
-                        userInfo != null && userInfo.getKakaoAccount() != null ? "존재" : "null");
+                log.warn("구글 사용자 정보 조회 실패: userInfo=null");
                 return null;
             }
 
         } catch (HttpClientErrorException e) {
-            log.warn("카카오 사용자 정보 조회 오류: status={}, body={}",
+            log.warn("구글 사용자 정보 조회 오류: status={}, body={}",
                     e.getStatusCode(), e.getResponseBodyAsString());
             return null;
         } catch (Exception e) {
-            log.error("카카오 사용자 정보 조회 중 예상치 못한 오류 발생", e);
+            log.error("구글 사용자 정보 조회 중 예상치 못한 오류 발생", e);
             return null;
         }
     }

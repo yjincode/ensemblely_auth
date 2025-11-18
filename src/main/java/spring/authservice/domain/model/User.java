@@ -29,7 +29,7 @@ public class User {
     @Column(unique = true)
     private String socialId;
 
-    @Column(nullable = false)
+    @Column
     private String email;
 
     @Column
@@ -37,7 +37,7 @@ public class User {
 
     private String nickname;
 
-    @Column(nullable = false)
+    @Column
     private String password;
 
     @Enumerated(EnumType.STRING)

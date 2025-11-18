@@ -3,449 +3,169 @@
 [![CI](https://github.com/yjincode/ensemblely_auth/actions/workflows/ci.yml/badge.svg)](https://github.com/yjincode/ensemblely_auth/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/yjincode/ensemblely_auth/branch/main/graph/badge.svg)](https://codecov.io/gh/yjincode/ensemblely_auth)
 
-앙상블리 프로젝트의 사용자 인증 및 회원 관리 서비스입니다.
+앙상블리 플랫폼에서 인증, 회원, 세션, 프로필 전반을 담당하는 백엔드 서비스입니다. 모바일/웹 클라이언트는 게이트웨이를 거쳐 REST API를 호출하고, 다른 마이크로서비스는 gRPC로 사용자 정보를 조회합니다.
 
-## 🏗 아키텍처 개요
-
+## 🏗 Architecture
 ```
-클라이언트
-    ↓ (Access Token in Header, Refresh Token in Cookie)
-게이트웨이
-    ↓ gRPC (토큰 검증)
-Auth Service ←→ 다른 마이크로서비스 (gRPC)
-    ↓
-PostgreSQL + Redis
+[Mobile / Web]
+     │  (Access Token Header, Refresh Cookie)
+     ▼
+[API Gateway]───────┐
+     │ gRPC         │
+     ▼              │
+[Auth Service]◀─────┘
+  │   │   │   │
+  │   │   │   ├─🔐 Redis (AOF, Pub/Sub)
+  │   │   ├─────🗄 PostgreSQL
+  │   ├──────────☁️ AWS S3 (프로필)
+  └───────────────🌏 External OAuth / GeoIP
 ```
+- REST API: `:9001`
+- Internal gRPC: `:9090`
+- Session metadata: PostgreSQL
+- Tokens + email verification + SSE pub/sub: Redis
+- Profile assets: AWS S3
 
-**포트 구성**
-- **REST API**: 9001 (클라이언트 ↔ 게이트웨이 ↔ Auth Service)
-- **gRPC**: 9090 (마이크로서비스 간 통신)
+## ✨ Capabilities
+- 이메일 기반 회원가입 및 로그인, 실시간 이메일 인증(SSE) + 코드/링크 병행 제공
+- JWT 발급/갱신, Refresh Token 세션 관리, Redis 블랙리스트, GeoIP 기반 세션 정보 추적
+- 비밀번호 초기화/변경, 강력한 규칙 검사, 로그인 이력 기반 세션 강제 만료
+- 소셜 로그인(Naver/Kakao/Google)과 기존 계정 통합 플로우, 임시 머지 토큰 Redis 저장
+- S3 기반 프로필 이미지 업로드/삭제, 허용 확장자 및 용량 검사, 파일 교체 시 기존 파일 정리
+- gRPC TokenService(UserId 전달/재발급/로그아웃) 및 UserInfoService(닉네임·프로필 조회)
+- 매일 새벽 세션 정리 배치, 이메일 발송 rate limit, 감사 로그 기록, JaCoCo 기반 커버리지
 
-### 핵심 설계 원칙
+## 🧱 Tech Stack
+- **Runtime**: Java 21, Spring Boot 3.5, Spring Security, Spring Data JPA
+- **Data**: PostgreSQL, Redis (AOF + Pub/Sub), AWS S3, Thymeleaf templates
+- **Protocols**: REST, gRPC (blocking + reactive stub), SSE
+- **Auth**: JWT(JJWT), BCrypt, AES-256 + HMAC 서명, GeoLite2
+- **Build/Test**: Gradle, JaCoCo, GitHub Actions, Codecov
 
-1. **게이트웨이 중심 인증**
-   - 모든 클라이언트 요청은 게이트웨이를 거침
-   - 게이트웨이가 gRPC로 Auth Service에 토큰 검증 요청
-   - Auth Service는 순수 비즈니스 로직만 담당 (필터 없음)
-
-2. **JWT 토큰 전략**
-   - **Access Token** (30분): Authorization 헤더, userId + nickname claim 포함
-   - **Refresh Token** (14일): HttpOnly 쿠키, 세션 DB 관리
-   - 본인 닉네임: 프론트엔드가 토큰 파싱 → Context 저장 (서버 조회 불필요)
-   - 다른 사람 닉네임: gRPC UserInfoService로 실시간 조회
-
-3. **세션 관리 (이중화)**
-   - **Redis (AOF)**: 블랙리스트 토큰 고속 검증 + 영속성 보장
-   - **PostgreSQL**: 세션 메타데이터 (디바이스, IP, 국가, 마지막 사용 시각)
-   - 로그아웃/세션 무효화 시 Redis + DB 동시 처리
-
-4. **마이크로서비스 간 통신**
-   - gRPC 기반 고성능 서버 간 통신
-   - 팀 서비스 등이 유저 정보 조회 시 UserInfoService 호출
-   - 인증은 게이트웨이에서 이미 처리되므로 권한 체크 불필요
-
-## 🚀 주요 기능
-
-### 인증 & 회원가입
-- ✅ 이메일 기반 회원가입
-- ✅ 로그인 및 JWT 토큰 발급 (Access + Refresh)
-- ✅ 아이디 중복 체크
-- ✅ 비밀번호 재설정
-- ✅ 토큰 재발급 (Access Token 만료 시)
-- ✅ 로그아웃 (세션 무효화)
-
-### 이메일 인증
-- ✅ 6자리 인증 코드 발송
-- ✅ 원클릭 이메일 인증 링크
-- ✅ 5분 TTL 자동 만료
-- ✅ Rate Limiting (1분 1회, 하루 10회)
-- ✅ Redis 기반 코드 저장
-
-### 세션 관리
-- ✅ 다중 디바이스 세션 관리
-- ✅ 세션 목록 조회 (디바이스명, IP, 국가, 마지막 사용 시각)
-- ✅ 특정 세션 무효화
-- ✅ 전체 세션 무효화 (비밀번호 변경 시)
-- ✅ 세션 자동 정리 배치 (14일 이상 미사용)
-- ✅ IP 암호화 저장 (개인정보 보호)
-
-### 보안 감사 로그
-- ✅ 세션 생성/무효화 이벤트 자동 기록
-- ✅ 토큰 갱신 이력 추적
-- ✅ 비동기 로그 저장 (메인 로직 성능 영향 없음)
-- ✅ IP, 디바이스, 국가 정보 포함
-
-### gRPC 서비스 (포트 9090)
-
-#### 1. TokenService (게이트웨이용)
-- `ValidateRefreshToken`: 토큰 검증 + Access Token 재발급
-  - ValidationLevel: `BASIC` (인증만) / `WITH_USER_ID` (userId 포함)
-  - Access Token 만료 시 Refresh Token으로 자동 재발급
-- `RefreshAccessToken`: Access Token 재발급
-- `Logout`: 세션 무효화
-
-#### 2. UserInfoService (마이크로서비스용)
-- `GetUserNickname`: 단일 사용자 닉네임 조회
-- `GetUserNicknames`: 일괄 닉네임 조회
-- `GetUserMaxWorkspaces`: 워크스페이스 생성 제한 조회
-- `GetUserDisplayInfo`: 닉네임 + 프로필 이미지 조회
-
-## 🛠 기술 스택
-
-- **Java 21** + **Spring Boot 3.5.6**
-- **PostgreSQL** - 사용자 데이터, 세션, 감사 로그
-- **Redis (AOF)** - 이메일 인증 코드, 블랙리스트 토큰 (영속성)
-- **gRPC** - 마이크로서비스 간 통신
-- **JWT (JJWT)** - 토큰 기반 인증
-- **Thymeleaf** - 이메일 템플릿
-- **JaCoCo** - 코드 커버리지
-- **GeoLite2** - IP 기반 국가 확인
-
-## 📦 프로젝트 구조
-
+## 📁 Directory Layout
 ```
-src/main/java/spring/authservice/
-├── config/          # 설정 (Security, Redis, JWT)
-│   ├── SecurityConfig.java       # Spring Security (모든 요청 허용)
-│   ├── RedisConfig.java          # Redis AOF 설정
-│   └── JwtProperties.java        # JWT 설정 값
-├── domain/          # Entity & DTO
-│   ├── User.java                 # 사용자 엔티티
-│   ├── RefreshTokenSession.java # 세션 엔티티
-│   ├── SecurityAuditLog.java    # 감사 로그 엔티티
-│   └── AuditEventType.java      # 감사 이벤트 타입
-├── grpc/            # gRPC 서비스 구현
-│   ├── TokenServiceGrpcImpl.java      # 토큰 검증 서비스
-│   └── UserInfoGrpcServiceImpl.java   # 유저 정보 조회 서비스
-├── service/         # 비즈니스 로직
-│   ├── UserService.java               # 회원 가입/로그인/토큰 관리
-│   ├── EmailService.java              # 이메일 발송
-│   ├── RefreshTokenSessionService.java # 세션 관리
-│   ├── RefreshTokenBlacklistService.java # 블랙리스트 관리
-│   ├── SecurityAuditService.java      # 감사 로그
-│   └── GeoIpService.java              # IP → 국가 코드
-├── scheduler/       # 배치 작업
-│   └── SessionCleanupScheduler.java   # 세션 자동 정리
-├── util/            # 유틸리티
-│   ├── JwtUtil.java           # JWT 생성/검증
-│   ├── CryptoUtil.java        # 토큰 암호화/IP 암호화
-│   └── PasswordValidator.java # 비밀번호 검증
-└── web/             # REST API 컨트롤러
-    └── UserController.java    # 인증 API
-
-src/main/proto/      # gRPC 프로토콜 정의
-└── user_info.proto  # TokenService + UserInfoService 정의
-
-src/main/resources/
-├── templates/       # 이메일 템플릿
-└── application.yml  # 설정 파일
+src/main/java/spring/authservice
+├── AuthServiceApplication.java
+├── adapter
+│   ├── in
+│   │   ├── web/              # REST + SSE controllers
+│   │   └── grpc/             # TokenService, UserInfoService
+│   └── out
+│       ├── cache/            # Redis token cache
+│       ├── persistence/      # Spring Data JPA adapters
+│       ├── storage/          # S3 profile storage
+│       ├── notification/     # Email sender
+│       └── external/         # GeoIP client
+├── application
+│   ├── port/{in,out}/        # Hexagonal ports
+│   └── service/              # User, Session, Email, Social, Profile services
+├── config/                   # Security, Redis, S3, JWT, OAuth
+├── domain/{model,vo}/        # Entities + DTOs
+├── scheduler/                # SessionCleanupScheduler
+├── util/                     # Crypto/JWT helpers
+└── resources
+    ├── application*.yml      # Profile-based config
+    ├── templates/            # Email HTML
+    └── proto/user_info.proto # gRPC contracts
 ```
 
-## 🔧 환경 설정
-
-### 1. 로컬 설정 파일 생성
-
-`src/main/resources/application-local.yml` 파일을 생성하세요:
-
-```yaml
-server:
-  port: 9001  # REST API 포트
-
-grpc:
-  server:
-    port: 9090  # gRPC 포트
-
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/auth_db
-    username: your-username
-    password: your-password
-
-  mail:
-    username: your-email@gmail.com
-    password: your-app-password  # Gmail 앱 비밀번호
-
-  data:
-    redis:
-      host: localhost
-      port: 6379
-
-jwt:
-  secret-key: your-jwt-secret-key
-  issuer: ensemblely-auth
-```
-
-### 2. 필요한 서비스 실행
-
-```bash
-# PostgreSQL
-docker run -d \
-  --name auth-postgres \
-  -e POSTGRES_DB=auth_db \
-  -e POSTGRES_USER=admin \
-  -e POSTGRES_PASSWORD=admin123 \
-  -p 5432:5432 \
-  postgres:15
-
-# Redis (AOF 활성화)
-docker run -d \
-  --name auth-redis \
-  -p 6379:6379 \
-  -v redis-data:/data \
-  redis:7 \
-  redis-server --appendonly yes
-```
-
-### 3. Gmail 앱 비밀번호 발급
-
-1. Google 계정 > 보안 > 2단계 인증 활성화
-2. 앱 비밀번호 생성
-3. `application-local.yml`에 설정
-
-## 🚀 실행 방법
-
-```bash
-# 빌드 (proto 파일 자동 생성)
-./gradlew build
-
-# 테스트
-./gradlew test
-
-# 실행
-./gradlew bootRun
-# → REST API: http://localhost:9001
-# → gRPC: localhost:9090
-
-# proto만 재생성
-./gradlew generateProto
-```
-
-## 📊 테스트 & 커버리지
-
-```bash
-# 테스트 실행
-./gradlew test
-
-# 커버리지 리포트 생성
-./gradlew jacocoTestReport
-
-# 커버리지 검증 (최소 80%)
-./gradlew jacocoTestCoverageVerification
-```
-
-**현재 커버리지:**
-- Controller: 100% ✅
-- 목표: 80% 이상
-
-## 📡 API 엔드포인트
-
-**Base URL:** `http://localhost:9001` (개발 환경)
-
-> **참고:** 모든 클라이언트 요청은 게이트웨이를 거칩니다. 직접 호출은 개발 환경에서만 사용하세요.
-
-### 회원가입 & 로그인
-```http
-POST /auths/register
-POST /auths/login
-GET  /auths/check-userid?userId={userId}
-```
-
-### 이메일 인증
-```http
-POST /auths/email/send-verification
-POST /auths/email/verify-code
-GET  /auths/verify-email?token={token}
-```
-
-### 비밀번호 재설정
-```http
-POST /auths/password/reset/send
-POST /auths/password/reset/verify
-POST /auths/password/reset/change
-```
-
-### 토큰 관리 (인증 필요)
-```http
-POST /auths/refresh      # Access Token 재발급
-POST /auths/logout       # 로그아웃
-```
-
-### 세션 관리 (인증 필요)
-```http
-GET    /me/sessions              # 세션 목록 조회
-DELETE /me/sessions/{sessionId}  # 특정 세션 무효화
-DELETE /me/sessions              # 모든 세션 무효화
-```
-
-### gRPC (포트 9090)
-
-#### TokenService (게이트웨이용)
-```protobuf
-rpc ValidateRefreshToken(ValidateTokenRequest) returns (ValidateTokenResponse);
-rpc RefreshAccessToken(RefreshTokenRequest) returns (RefreshTokenResponse);
-rpc Logout(LogoutRequest) returns (LogoutResponse);
-
-enum ValidationLevel {
-  BASIC = 0;         // 인증만
-  WITH_USER_ID = 1;  // 인증 + userId
-}
-```
-
-#### UserInfoService (마이크로서비스용)
-```protobuf
-rpc GetUserNickname(UserIdRequest) returns (UserNicknameResponse);
-rpc GetUserNicknames(UserIdsRequest) returns (UserNicknamesResponse);
-rpc GetUserMaxWorkspaces(UserIdRequest) returns (UserMaxWorkspacesResponse);
-rpc GetUserDisplayInfo(UserIdRequest) returns (UserDisplayInfoResponse);
-```
-
-## 🔐 보안
-
-### 토큰 보안
-- ✅ BCrypt 비밀번호 암호화 (strength 10)
-- ✅ JWT Access Token (30분 만료)
-- ✅ Refresh Token 세션 관리 (14일 만료)
-- ✅ HttpOnly 쿠키로 Refresh Token 전송 (XSS 방지)
-- ✅ 블랙리스트 토큰 자동 검증 (Redis AOF)
-
-### 데이터 보호
-- ✅ Refresh Token AES-256 암호화 저장
-- ✅ IP 주소 AES-256 암호화 저장
-- ✅ SHA-256 토큰 해싱 (빠른 조회용)
-- ✅ 환경변수 기반 민감정보 관리
-
-### 악용 방지
-- ✅ 이메일 발송 Rate Limiting (1분 1회, 하루 10회)
-- ✅ 세션 자동 정리 (14일 미사용 시 삭제)
-- ✅ 보안 감사 로그 자동 기록
-- ✅ GeoIP 기반 이상 로그인 탐지 가능
-
-## 📝 개발 가이드
-
-### User 엔티티 필드
-- `userId`: 로그인 아이디 (고유)
-- `email`: 이메일 (인증 필수)
-- `nickname`: 닉네임 (Access Token claim에 포함)
-- `password`: BCrypt 암호화된 비밀번호
-- `profileImageUrl`: 프로필 이미지 URL
-- `authProvider`: 인증 제공자 (EMAIL, GOOGLE, KAKAO 등)
-- `accountVerified`: 이메일 인증 여부
-- `maxWorkspaces`: 생성 가능한 워크스페이스 수 (기본 2개)
-
-### RefreshTokenSession 엔티티
-- `sessionId`: UUID (세션 고유 ID)
-- `userId`: 사용자 ID
-- `refreshTokenHash`: SHA-256 해시 (빠른 조회)
-- `encryptedToken`: AES-256 암호화된 토큰
-- `deviceName`: 디바이스명 (User-Agent 파싱)
-- `ipAddress`: 암호화된 IP 주소
-- `country`: 국가 코드 (GeoIP)
-- `createdAt`: 생성 시각
-- `lastUsedAt`: 마지막 사용 시각
-
-### SecurityAuditLog 이벤트 타입
-- `SESSION_CREATED`: 로그인 (세션 생성)
-- `SESSION_REVOKED`: 로그아웃 (특정 세션 무효화)
-- `ALL_SESSIONS_REVOKED`: 전체 로그아웃 (비밀번호 변경 등)
-- `SESSION_REVOKED_BY_TOKEN`: 토큰으로 세션 무효화
-- `TOKEN_REFRESHED`: Access Token 재발급
-
-### 게이트웨이 연동 예시
-
-```java
-// 게이트웨이에서 토큰 검증
-ValidateTokenRequest request = ValidateTokenRequest.newBuilder()
-    .setAccessToken(accessToken)
-    .setRefreshToken(refreshToken)
-    .setLevel(ValidationLevel.WITH_USER_ID)
-    .build();
-
-ValidateTokenResponse response = tokenServiceStub.validateRefreshToken(request);
-
-if (response.getValid()) {
-    Long userId = response.getUserId();
-
-    // 새 Access Token 발급된 경우
-    if (!response.getNewAccessToken().isEmpty()) {
-        // 클라이언트에 새 토큰 전달
-    }
-
-    // userId를 헤더에 담아 각 서비스로 라우팅
-    exchange.getRequest().mutate()
-        .header("X-User-Id", userId.toString())
-        .build();
-}
-```
-
-### 팀 서비스에서 유저 정보 조회 예시
-
-```java
-// 팀원 목록 조회 (gRPC)
-UserIdsRequest request = UserIdsRequest.newBuilder()
-    .addAllUserIds(Arrays.asList(1L, 2L, 3L))
-    .build();
-
-UserNicknamesResponse response = userInfoServiceStub.getUserNicknames(request);
-
-for (UserNicknameResponse user : response.getUsersList()) {
-    if (user.getExists()) {
-        System.out.println(user.getUserId() + ": " + user.getNickname());
-    }
-}
-```
-
-### 이메일 템플릿 커스터마이징
-`src/main/resources/templates/` 디렉토리의 HTML 파일을 수정하세요:
-- `email-verification.html` - 이메일 인증
-- `password-reset-email.html` - 비밀번호 재설정
-
-## 🔄 배치 작업
-
-### SessionCleanupScheduler
-- **실행 주기:** 매일 새벽 3시
-- **작업 내용:** 14일 이상 미사용 세션 자동 삭제
-- **동작:** Redis 블랙리스트 + DB 세션 동시 정리
-
-## 📈 모니터링
-
-### 주요 로그
-- 세션 생성/무효화 이벤트
-- 토큰 재발급 이력
-- 이메일 발송 성공/실패
-- gRPC 호출 로그
-
-### 성능 지표
-- gRPC 응답 시간 (평균 < 100ms)
-- Redis 조회 성능 (블랙리스트 검증)
-- 세션 DB 조회 성능
-
-## 🐛 트러블슈팅
-
-### Redis AOF 파일이 커질 때
-```bash
-# Redis CLI에서 AOF 재작성
-redis-cli BGREWRITEAOF
-```
-
-### GeoIP 데이터베이스 업데이트
-```bash
-# GeoLite2 데이터베이스를 최신 버전으로 교체
-# src/main/resources/GeoLite2-Country.mmdb
-```
-
-### gRPC 코드 생성 오류
-```bash
-# proto 파일 수정 후 재생성
-./gradlew clean generateProto
-```
-
-## 📚 참고 자료
-
-- [Spring Boot Security](https://spring.io/projects/spring-boot)
-- [gRPC Java](https://grpc.io/docs/languages/java/)
-- [JJWT](https://github.com/jwtk/jjwt)
-- [Redis AOF](https://redis.io/docs/management/persistence/)
-
-## 📄 라이선스
-
+### Layer Highlights
+- **Adapters In**: `UserController`, `EmailVerificationSseController`, gRPC `TokenServiceGrpcImpl`, `UserInfoGrpcServiceImpl`
+- **Application Services**: registration/login(UserService), token/session(RefreshTokenSessionService, RefreshTokenBlacklistService), email(EmailService, EmailVerificationSseService), profile(ProfileService), social login adapters (Google/Kakao/Naver)
+- **Adapters Out**: persistence adapters bridging ports to `UserRepository` & `RefreshTokenSessionRepository`, `TokenCacheAdapter` for Redis blacklists, `EmailAdapter` for JavaMail + Thymeleaf, `S3StorageAdapter` for AWS SDK v2
+
+## 🧪 Local Development
+1. **Prerequisites**: JDK 21, Docker (for PostgreSQL/Redis), AWS/SNS credentials for S3 if 이미지 업로드 테스트, SMTP 계정.
+2. **Boot services**
+   ```bash
+   docker compose up -d   # postgres:5432, redis:6379
+   ```
+3. **Configure secrets**: copy `src/main/resources/application-local.yml` and override DB, Redis, OAuth, S3, SMTP, JWT, AES/HMAC keys.
+4. **Run**
+   ```bash
+   ./gradlew bootRun      # REST :9001, gRPC :9090
+   ```
+5. **Build/Test**
+   ```bash
+   ./gradlew build        # includes proto generation
+   ./gradlew test
+   ./gradlew jacocoTestReport jacocoTestCoverageVerification
+   ```
+6. **Proto only**
+   ```bash
+   ./gradlew generateProto
+   ```
+
+## 🌐 REST & SSE API
+_Base URL: http://localhost:9001 (개발 환경에서만 직접 호출)_
+
+| 구분 | Endpoint | 설명 |
+| --- | --- | --- |
+| 인증 | `POST /auths/register` | 이메일 회원가입 + 자동 로그인 |
+|  | `POST /auths/login` | 이메일 로그인 |
+|  | `POST /auths/logout` | Refresh Token 기반 로그아웃 |
+| 이메일 | `POST /auths/email/send-verification` | 인증 메일 발송 (code + link) |
+|  | `POST /auths/email/verify-code` | 6자리 코드 검증 |
+|  | `GET /auths/verify-email?token=...` | 인증 토큰으로 HTML 결과 제공 |
+| 비밀번호 | `POST /auths/password/reset/send` | 재설정 코드 발송 |
+|  | `POST /auths/password/reset/verify` | 코드 검증 |
+|  | `POST /auths/password/reset` | 새 비밀번호 설정 |
+| 소셜 | `POST /auths/social/login` | Naver/Kakao/Google Authorization Code 로그인 |
+|  | `POST /auths/social/merge` | 기존 계정과 통합/신규 분기 |
+| 세션 | `GET /me/sessions` | X-User-Id 헤더 기준 세션 목록 |
+|  | `DELETE /me/sessions/{sessionId}` | 특정 디바이스 만료 |
+|  | `DELETE /me/sessions` | 전체 세션 만료 |
+| 프로필 | `PUT /me/password` | 로그인 상태 비밀번호 변경 |
+|  | `POST /me/profile/image` | Multipart 프로필 업로드 |
+|  | `DELETE /me/profile/image` | 프로필 이미지 삭제 |
+| SSE | `GET /api/auth/verify-stream?email=` | 이메일 인증 결과 실시간 수신 |
+| 모니터링 | `GET /api/auth/verify-stream/count` | 활성 SSE 커넥션 수 |
+
+## 🔌 gRPC Contracts (`src/main/proto/user_info.proto`)
+- **TokenService**
+  - `ValidateRefreshToken(ValidateTokenRequest)`: Access 우선 검증, 만료 시 Refresh로 재발급, `ValidationLevel`에 따라 userId 반환
+  - `RefreshAccessToken(RefreshTokenRequest)`: Refresh 토큰 그대로 재사용
+  - `Logout(LogoutRequest)`: Refresh 토큰 기반 세션 무효화
+- **UserInfoService**
+  - `GetUserNickname(UserIdRequest)`
+  - `GetUserNicknames(UserIdsRequest)`
+  - `GetUserDisplayInfo(UserIdRequest)` (닉네임 + 프로필 이미지 URL)
+
+게이트웨이는 `ValidateTokenRequest.level = WITH_USER_ID` 로 호출하여 userId를 헤더(`X-User-Id`)에 주입합니다. 내부 서비스는 `UserInfoService`로 닉네임/프로필을 일괄 조회합니다.
+
+## 🗃 Domain Model
+- `User`
+  - `id`, `email`, `username`, `nickname`, `password`, `authProvider`, `accountVerified`, `profileImageUrl`
+  - OAuth 프로필 합치기, 프로필 이미지 교체, 비밀번호 변경 시 해시 재생성
+- `RefreshTokenSession`
+  - `sessionId`, `userId`, `refreshTokenHash`, `encryptedToken`, `deviceName`, `ipAddress`, `country`, `createdAt`, `lastUsedAt`
+  - 로그인, 토큰 갱신, 로그아웃 시 동기화, 14일 미사용 자동 삭제
+- `UserDto`
+  - 회원가입/로그인/소셜/세션/비밀번호/프로필 관련 request·response DTO를 한곳에서 관리
+
+## 🔐 Security & Reliability
+- JWT Access(30분) + Refresh(14일) 발급, SHA-256 + AES-256(IV 포함) 복합 보호
+- HttpOnly Secure 쿠키를 통해 Refresh Token 전달, Access Token은 헤더 사용
+- Redis 블랙리스트(로그아웃·탈취 대응), Refresh Token 마지막 사용 시각 업데이트
+- BCrypt 비밀번호 해시, PasswordValidator로 길이/조합 검사, 재사용 방지
+- 이메일 인증 Rate Limit (1분 1회/하루 10회), 실패 시에도 재시도 여지 부여
+- SSE + Redis Pub/Sub으로 인증 완료 즉시 프론트 전달
+- GeoIP 기반 국가 기록, SessionCleanupScheduler(매일 03:00)로 장기 미사용 세션 삭제
+- JaCoCo 리포트(`build/reports/jacoco/test/html/index.html`), 최소 17% 커버리지 규칙 설정 (proto/설정 제외)
+
+## 📈 Observability & Ops
+- Logback 설정(`src/main/resources/logback-spring.xml`)로 REST/gRPC/메일/세션/토큰 로그 분리
+- `logs/` 디렉토리에 서비스 로그 저장 (Git 무시)
+- 주요 지표: gRPC 응답(<100ms), Redis 블랙리스트 latency, 이메일 발송 성공률
+- 이메일·GeoIP·proto 빌드 관련 트러블슈팅 명령 제공
+
+## 🧰 Troubleshooting
+| 상황 | 대응 |
+| --- | --- |
+| Redis AOF 비대 | `redis-cli BGREWRITEAOF`로 파일 재작성 |
+| GeoIP DB 구버전 | `src/main/resources/GeoLite2-Country.mmdb` 교체 |
+| proto regenerate 필요 | `./gradlew clean generateProto` |
+| SMTP 오류 | Gmail 2FA + App Password 재발급 후 `application-local.yml` 갱신 |
+
+## 📄 License
 MIT License

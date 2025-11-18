@@ -223,7 +223,8 @@ public class UserDto {
     @Builder
     public static class SocialLoginRequest {
         private String provider;        // "naver", "kakao", "google"
-        private String accessToken;     // 프론트엔드에서 받은 OAuth Access Token
+        private String code;            // 프론트엔드에서 받은 Authorization Code
+        private String state;           // 네이버 전용 CSRF 방지 state (선택)
     }
 
     @Getter
@@ -235,15 +236,16 @@ public class UserDto {
         private boolean isNewUser;      // 신규 가입 여부
         private Boolean mergeRequired;  // 계정 통합 필요 여부 (409일 때만 true)
         private String email;           // 통합 대상 이메일 (409일 때만 포함)
+        private String mergeToken;      // 계정 통합용 임시 토큰 (409일 때만 포함)
     }
 
     @Getter
     @Builder
     public static class SocialMergeRequest {
-        private String email;           // 기존 계정 이메일
-        private String password;        // 기존 계정 비밀번호 (본인 인증)
-        private String provider;        // "naver", "kakao", "google"
-        private String accessToken;     // 소셜 Access Token
+        private String email;           // 기존 계정 이메일 (통합 시에만 필요)
+        private String password;        // 기존 계정 비밀번호 (통합 시에만 필요)
+        private String mergeToken;      // Redis에 저장된 임시 검증 토큰
+        private boolean mergeWithExisting; // true: 기존 계정 통합, false: 신규 계정 생성
     }
 
     @Getter
@@ -252,5 +254,17 @@ public class UserDto {
         private boolean success;
         private String message;
         private String accessToken;     // 자체 JWT Access Token
+    }
+
+    // === Redis 임시 검증 토큰 ===
+
+    @Getter
+    @Builder
+    public static class SocialMergeTokenData {
+        private String email;           // 소셜 계정 이메일
+        private String socialId;        // 소셜 계정 ID
+        private String provider;        // "naver", "google" (kakao는 통합 불가)
+        private String name;            // 소셜 계정 실명
+        private String profileImageUrl; // 소셜 계정 프로필 이미지 (선택)
     }
 }
